@@ -2,6 +2,7 @@
     "domain": "motion_frontend",
     "name": "Motion Frontend",
     "config_flow": true,
+    "iot_class": "local_push",
     "documentation": "https://github.com/krahabb/motion_frontend",
     "issue_tracker": "https://github.com/krahabb/motion_frontend/issues",
     "requirements": [],
