@@ -100,13 +100,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
             config = client.config
             for event in MANAGED_EVENTS:
-                hookcommand = "curl%20-d%20'" \
-                                f"event={event};" \
-                                "camera_id=%t;" \
-                                "event_id=%v;" \
-                                "filename=%f;" \
-                                "filetype=%n" \
-                                f"'%20{api.webhook_url}"
+                hookcommand = f"curl%20-d%20'event={event}'%20" \
+                                "-d%20'camera_id=%t'%20" \
+                                "-d%20'event_id=%v'%20" \
+                                "-d%20'filename=%f'%20" \
+                                "-d%20'filetype=%n'%20" \
+                                f"{api.webhook_url}"
 
                 command = config.get(event)
                 if (command != hookcommand) and (force or (command is None)):
