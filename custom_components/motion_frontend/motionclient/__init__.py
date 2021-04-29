@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 
 import re
 import aiohttp
+from yarl import URL
 import socket
 import asyncio
 import async_timeout
@@ -275,9 +276,11 @@ class MotionHttpClient:
         while True:
             try:
                 with async_timeout.timeout(timeout):
+                    url = URL(self._server_url + api_url)
+                    #url = urljoin(self._server_url, api_url)
                     response = await self._session.request(
                         method,
-                        urljoin(self._server_url, api_url),
+                        url,
                         auth=self._auth,
                         headers=self._requestheaders,
                         ssl=self._tlsmode is TlsMode.STRICT
