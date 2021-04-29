@@ -35,7 +35,7 @@ from .const import (
 
 #SCAN_INTERVAL = timedelta(seconds=CAMERA_SCAN_INTERVAL_SECS)
 
-
+"""
 _DEV_EN_ALT = "enable_alerts"
 _DEV_DS_ALT = "disable_alerts"
 _DEV_EN_REC = "start_recording"
@@ -49,7 +49,7 @@ CAMERA_SERVICES = {
     _DEV_DS_REC: "async_stop_recording",
     _DEV_SNAP: "async_snapshot",
 }
-
+"""
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the Agent cameras."""
@@ -67,9 +67,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     api.register_cameras(cameras)
 
     """
-    platform = entity_platform.current_platform.get()
-    for service, method in CAMERA_SERVICES.items():
-        platform.async_register_entity_service(service, {}, method)
+    #platform = entity_platform.current_platform.get()
+    #for service, method in CAMERA_SERVICES.items():
+    #    platform.async_register_entity_service(service, {}, method)
     """
 
 class Camera(MjpegCamera):
