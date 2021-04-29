@@ -1,0 +1,16 @@
+{
+    "domain": "motion_frontend",
+    "name": "Motion Frontend",
+    "config_flow": true,
+    "documentation": "https://github.com/krahabb/motion_frontend",
+    "issue_tracker": "https://github.com/krahabb/motion_frontend/issues",
+    "requirements": [],
+    "ssdp": [],
+    "zeroconf": [],
+    "homekit": {},
+    "mqtt": [],
+    "dependencies": [],
+    "after_dependencies": ["webhook","camera","media_source"],
+    "codeowners": ["@krahabb"],
+    "version": "0.0.1"
+  }

@@ -1,11 +1,10 @@
 {
-    "name": "Integration blueprint",
-    "hacs": "1.6.0",
+    "name": "Motion Frontend",
     "domains": [
-        "binary_sensor",
-        "sensor",
-        "switch"
+        "camera"
     ],
-    "iot_class": "Cloud Polling",
-    "homeassistant": "0.118.0"
+    "iot_class": "Local Push",
+    "homeassistant": "2021.0.0",
+    "hacs": "1.6.0",
+    "render_readme": true
 }

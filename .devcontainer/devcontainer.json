@@ -4,8 +4,9 @@
 	"name": "Blueprint integration development",
 	"context": "..",
 	"appPort": [
-		"9123:8123"
+		"9124:8123"
 	],
+	"forwardPorts": [8080, 8081],
 	"postCreateCommand": "container install",
 	"extensions": [
 		"ms-python.python",

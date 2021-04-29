@@ -3,5 +3,6 @@ pythonenv*
 venv
 .venv
 .coverage
+.ropeproject
 *.secret
 *.user
