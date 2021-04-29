@@ -1,0 +1,43 @@
+
+GET http://192.168.1.7:8080 HTTP/1.1
+Accept: *
+Accept-Encoding: gzip, deflate
+Connection: keep-alive
+
+###
+GET http://localhost:8080 HTTP/1.1
+Accept: *
+Accept-Encoding: gzip, deflate
+Connection: keep-alive
+
+###
+GET http://192.168.1.7:8080/0/config/list HTTP/1.1
+Accept: *
+
+###
+GET http://localhost:8080/0/config/list HTTP/1.1
+Accept: *
+
+###
+GET http://192.168.1.7:8080/0/detection/status HTTP/1.1
+Accept: *
+
+###
+GET http://localhost:8080/0/detection/status HTTP/1.1
+Accept: *
+
+###
+GET http://192.168.1.7:8080/101/detection/pause HTTP/1.1
+Accept: *
+
+###
+GET http://192.168.1.7:8080/101/detection/start HTTP/1.1
+Accept: *
+
+###
+GET http://192.168.1.7:8080/all/detection/connection HTTP/1.1
+Accept: *
+
+###
+GET http://192.168.1.7:8080/103/action/snapshot HTTP/1.1
+Accept: *

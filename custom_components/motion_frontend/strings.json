@@ -1,0 +1,44 @@
+{
+  "title": "Motion Frontend",
+  "config": {
+    "abort": {
+      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+    },
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]"
+    },
+    "step": {
+      "user": {
+        "title": "Motion server",
+        "description": "Setup motion server address",
+        "data": {
+          "host": "[%key:common::config_flow::data::host%]",
+          "port": "[%key:common::config_flow::data::port%]",
+          "username": "[%key:common::config_flow::data::username%]",
+          "password": "[%key:common::config_flow::data::password%]",
+          "tls_mode": "TLS mode",
+          "webhook_mode": "Webhook mode",
+          "webhook_address": "Webhook address",
+          "media_source": "Mount motion server recording path as a media library"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "",
+        "description": "",
+        "data": {
+          "username": "[%key:common::config_flow::data::username%]",
+          "password": "[%key:common::config_flow::data::password%]",
+          "tls_mode": "TLS mode",
+          "webhook_mode": "Webhook mode",
+          "webhook_address": "Webhook address",
+          "media_source": "Mount motion server recording path as a media library"
+        }
+      }
+    }
+  }
+}

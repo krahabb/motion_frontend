@@ -1,0 +1,44 @@
+{
+    "title": "Motion Frontend",
+    "config": {
+      "abort": {
+        "single_instance_allowed": "Already configured. Only a single configuration possible."
+      },
+      "error": {
+        "cannot_connect": "Unable to connect",
+        "invalid_auth": "Authentication error"
+      },
+      "step": {
+        "user": {
+          "title": "Motion server",
+          "description": "Configure motion server connection",
+          "data": {
+            "host": "Host",
+            "port": "Port",
+            "username": "Username",
+            "password": "Password",
+            "tls_mode": "TLS mode",
+            "webhook_mode": "Webhook mode",
+            "webhook_address": "Webhook address",
+            "media_source": "Mount motion server recording path as a media library"
+          }
+        }
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "title": "Motion server",
+          "description": "Configure motion server connection",
+          "data": {
+            "username": "Username",
+            "password": "Password",
+            "tls_mode": "TLS mode",
+            "webhook_mode": "Webhook mode",
+            "webhook_address": "Webhook address",
+            "media_source": "Mount motion server recording path as a media library"
+          }
+        }
+      }
+    }
+  }
