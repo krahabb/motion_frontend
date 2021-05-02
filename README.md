@@ -12,7 +12,6 @@ After succesfully connecting you will have all of the cameras in your motion set
 
 This code is in the early stage of development. There are quite some features undergoing development at the moment and this will result in frequent updates in the days to come. You are welcome to try and test it but be aware that some things might abruptly change meaning the configuration has to be rebuilt (not a great effort anyway but..well). If you want to submit any idea, request, thought you are welcome to post in 'Discussions'
 
-
 ## Installation
 
 ### HACS
@@ -88,6 +87,12 @@ When configuring the webhook section of the integration you can decide wich type
 Also, as a final, important, hint, the webhook gets invoked from motion by executing a 'curl' command so you *must* have it installed on the system running motion
 
 If your motion server runs on the same HA machine (meaning they really share the / filesystem!) it can install the configured motion recording path ('target_dir') as a local media path in HA so to expose the recordings too through the media_player ui. This is still pretty raw and will just show you the path content allowing to browse and play content. It might be uncomfortable to use it when your recordings start to fill the filesystem and are rather unorganized (i.e. your motion server saves everything in the same folder). You might have already setup a filesystem tree to better suite your or organizational needs like separating recordings by camera and/or date: this will ease the browsing of your media content.
+
+## Features
+
+- support camera entity with streaming and service interface
+- Alarm control panel to enable/disable motion detection and alarm triggering
+- Services to interact with motion daemon configuration and to enable/disable motion detection
 
 ## References
 - [@motion]
