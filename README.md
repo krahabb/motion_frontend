@@ -8,6 +8,10 @@
 This [homeassistant](https://www.home-assistant.io/) integration allows you to connect your HA instance directly to a running [@motion] daemon.
 After succesfully connecting you will have all of the cameras in your motion setup available in you Home Assistant installation as streaming cameras thus allowing you to access your motion NVR camera streams (and recordings) from within the HA frontend 
 
+## Important warning
+
+This code is in the early stage of development. There are quite some features undergoing development at the moment and this will result in frequent updates in the days to come. You are welcome to try and test it but be aware that some things might abruptly change meaning the configuration has to be rebuilt (not a great effort anyway but..well). If you want to submit any idea, request, thought you are welcome to post in 'Discussions'
+
 
 ## Installation
 
