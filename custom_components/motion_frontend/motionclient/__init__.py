@@ -178,6 +178,8 @@ class MotionHttpClient:
         self._cameras.clear()
         self._configs.clear()
 
+        self._configs[0] = await self.async_config_list(0)
+
         async def add_camera(id: int):
             self._configs[id] = await self.async_config_list(id)
             self._cameras[id] = self._camera_factory(self, id)
@@ -222,9 +224,6 @@ class MotionHttpClient:
                 self._ver_minor = int(match_version.group(2))
             if count > 3:
                 self._ver_build = int(match_version.group(3))
-
-        if 0 not in self._configs.keys():
-            self._configs[0] = await self.async_config_list(0)
 
         # here we're not relying on self._version being correctly parsed
         # since the matching code could fail in future
