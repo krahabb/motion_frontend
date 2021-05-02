@@ -1,5 +1,6 @@
 """The Motion Frontend integration."""
 from typing import Any, Callable, Dict, List, Optional, Union
+from logging import WARNING, INFO
 import asyncio
 
 #from aiohttp.web import Request, Response
@@ -15,7 +16,6 @@ from homeassistant.components import mqtt
 from homeassistant.helpers import device_registry
 from homeassistant.util import raise_if_invalid_path
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-#from homeassistant.helpers.network import get_url
 from homeassistant.const import (
     CONF_HOST, CONF_PORT,
     CONF_USERNAME, CONF_PASSWORD, ATTR_AREA_ID
@@ -26,7 +26,6 @@ from .motionclient import MotionHttpClient, MotionHttpClientError, MotionHttpCli
 from .helpers import (
     LOGGER, LOGGER_trap,
 )
-from logging import WARNING, INFO
 
 from .const import (
     DOMAIN, PLATFORMS,
@@ -39,6 +38,7 @@ from .const import (
     MANAGED_EVENTS
 )
 
+from .camera import MotionFrontendCamera
 
 async def async_setup(hass: HomeAssistant, config: dict):
 
@@ -49,34 +49,30 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
     hass.data.setdefault(DOMAIN, {})
 
-    client = MotionHttpClient(
-        config_entry.data[CONF_HOST], config_entry.data[CONF_PORT],
-        username=config_entry.data.get(CONF_USERNAME), password=config_entry.data.get(CONF_PASSWORD),
-        tlsmode=MAP_TLS_MODE[config_entry.data.get(CONF_TLS_MODE, CONF_OPTION_AUTO)],
-        session=async_get_clientsession(hass),
-        logger=LOGGER
-        )
+    data = config_entry.data
+
+    api = MotionFrontendApi(hass, data)
     try:
-        await client.update(updatecameras=True)
+        await api.update(updatecameras=True)
     except MotionHttpClientError as err:
-        await client.close()
+        await api.close()
         raise ConfigEntryNotReady from err
 
-    if not client.is_available:
+    if not api.is_available:
         raise ConfigEntryNotReady
 
-    api = MotionFrontendApi()
-    api.client = client
     api.unsub_entry_update_listener = config_entry.add_update_listener(api.entry_update_listener)
 
-    webhook_mode = config_entry.data.get(CONF_WEBHOOK_MODE)
+    hass.data[DOMAIN][config_entry.entry_id] = api
+
+    webhook_mode = data.get(CONF_WEBHOOK_MODE)
     if webhook_mode != CONF_OPTION_NONE:
         # setup webhook to manage 'push' from motion server
         try:
             webhook_id = f"{DOMAIN}_{config_entry.entry_id}"
             hass.components.webhook.async_register(DOMAIN, DOMAIN, webhook_id, api.async_handle_webhook)
             api.webhook_id = webhook_id #set here after succesfully calling async_register
-            webhook_address = config_entry.data.get(CONF_WEBHOOK_ADDRESS, CONF_OPTION_DEFAULT)
+            webhook_address = data.get(CONF_WEBHOOK_ADDRESS, CONF_OPTION_DEFAULT)
             if webhook_address == CONF_OPTION_INTERNAL:
                 api.webhook_url = hass.helpers.network.get_url(
                     allow_internal=True,
@@ -98,7 +94,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
             force = (webhook_mode == CONF_OPTION_FORCE)
 
-            config = client.config
+            config = api.config
             for event in MANAGED_EVENTS:
                 hookcommand = f"curl%20-d%20'event={event}'%20" \
                                 "-d%20'camera_id=%t'%20" \
@@ -109,7 +105,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
                 command = config.get(event)
                 if (command != hookcommand) and (force or (command is None)):
-                    await client.config_set(event, hookcommand)
+                    await api.async_config_set(event, hookcommand)
 
             LOGGER.info("Registered webhook for motion events")
         except Exception as exception:
@@ -119,14 +115,13 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
                 api.webhook_id = None
                 api.webhook_url = None
 
-    hass.data[DOMAIN][config_entry.entry_id] = api
 
     # setup media_source entry to access server recordings if they're local
-    if config_entry.data.get(CONF_MEDIASOURCE):
+    if data.get(CONF_MEDIASOURCE):
         try:
-            media_dir_id = f"{DOMAIN}_{client.unique_id}"
+            media_dir_id = f"{DOMAIN}_{api.unique_id}"
             if media_dir_id not in hass.config.media_dirs:
-                target_dir = client.target_dir
+                target_dir = api.config.get("target_dir")
                 if target_dir:
                     raise_if_invalid_path(target_dir)
                     if os.access(target_dir, os.R_OK):
@@ -161,7 +156,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
     if unload_ok:
         api: MotionFrontendApi = hass.data[DOMAIN][config_entry.entry_id]
-        await api.client.close()
+        await api.close()
         if api.webhook_id:
             hass.components.webhook.async_unregister(api.webhook_id)
             api.webhook_id = None
@@ -179,33 +174,30 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
 
 
-class MotionFrontendApi:
-    client: MotionHttpClient = None
-    webhook_id: str = None
-    webhook_url: str = None
-    media_dir_id: str = None
-    unsub_entry_update_listener = None
-    _cameras: list = []
+class MotionFrontendApi(MotionHttpClient):
 
+    def __init__(self, hass: HomeAssistant, data: dict):
+        MotionHttpClient.__init__(self, data[CONF_HOST], data[CONF_PORT],
+                        username=data.get(CONF_USERNAME), password=data.get(CONF_PASSWORD),
+                        tlsmode=MAP_TLS_MODE[data.get(CONF_TLS_MODE, CONF_OPTION_AUTO)],
+                        session=async_get_clientsession(hass),
+                        logger=LOGGER,
+                        camera_factory=_entity_camera_factory)
+        self.hass = hass
+        self.webhook_id: str = None
+        self.webhook_url: str = None
+        self.media_dir_id: str = None
+        self.unsub_entry_update_listener = None
 
-    def register_cameras(self, cameras: list):
-        self._cameras = cameras
-        return
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self.unique_id)},
+            "name": self.name,
+            "manufacturer": "motion-project.github.io",
+            "sw_version": self.version,
+        }
 
-
-    def register_camera(self, camera):
-        if camera not in self._cameras:
-            self._cameras.append(camera)
-        else:
-            LOGGER.warning("register_camera: camera(%s) already registered", camera.unique_id)
-        return
-
-    def unregister_camera(self, camera):
-        if camera in self._cameras:
-            self._cameras.remove(camera)
-        else:
-            LOGGER.warning("unregister_camera: camera(%s) not registered", camera.unique_id)
-        return
 
     async def async_handle_webhook(self, hass: HomeAssistant, webhook_id: str, request: aiohttp.web.Request):
         try:
@@ -215,18 +207,16 @@ class MotionFrontendApi:
             LOGGER.debug("Received webhook - (%s)", data)
 
             camera_id = int(data.get("camera_id"))
-            for camera in self._cameras:
-                if camera.motioncamera.camera_id == camera_id:
-                    if self.media_dir_id:
-                        try:# fix the path as a media_source compatible url
-                            filename = data.get(EXTRA_ATTR_FILENAME)
-                            if filename:
-                                filename = Path(filename).relative_to(self.client.target_dir)
-                                data[EXTRA_ATTR_FILENAME] = f"{self.media_dir_id}/{str(filename)}"
-                        except:
-                            pass
-                    camera.handle_event(data)
-                    break
+            camera = self.getcamera(camera_id)
+            if self.media_dir_id:
+                try:# fix the path as a media_source compatible url
+                    filename = data.get(EXTRA_ATTR_FILENAME)
+                    if filename:
+                        filename = Path(filename).relative_to(self.config.get("target_dir"))
+                        data[EXTRA_ATTR_FILENAME] = f"{self.media_dir_id}/{str(filename)}"
+                except:
+                    pass
+            camera.handle_event(data)
 
         except (asyncio.TimeoutError, aiohttp.web.HTTPException) as error:
             LOGGER.error("async_handle_webhook - exception (%s)", error)
@@ -239,3 +229,7 @@ class MotionFrontendApi:
         await hass.config_entries.async_reload(config_entry.entry_id)
         return
 
+
+
+def _entity_camera_factory(client: MotionHttpClient, id: int):
+    return MotionFrontendCamera(client, id)
