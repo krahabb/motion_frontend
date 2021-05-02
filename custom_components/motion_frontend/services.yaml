@@ -1,0 +1,61 @@
+# Service ID
+config_set:
+  # Service name as shown in UI
+  name: Set config
+  # Description of the service
+  description: Set a motion config parameter associated with a specific camera/thread
+  # If the service accepts entity IDs, target allows the user to specify entities by entity, device, or area.
+  # If `target` is specified, `entity_id` should not be defined in the `fields` map.
+  # By default it shows only targets matching entities from the same domain as the service,
+  # but if further customization is required, target supports the entity, device,
+  # and area selectors (https://www.home-assistant.io/docs/blueprint/selectors/).
+  # Entity selector parameters will automatically be applied to device and area,
+  # and device selector parameters will automatically be applied to area.
+  target:
+    entity:
+      integration: motion_frontend
+
+  fields:
+    param:
+      name: Parameter
+      description: Motion config parameter
+      required: true
+      # Advanced fields are only shown when the advanced mode is enabled for the user (default = false)
+      advanced: false
+      example: "setup_mode"
+      # default: "high"
+      # Selector (https://www.home-assistant.io/docs/blueprint/selectors/) to control the input UI for this field
+      selector:
+        text:
+    value:
+      name: Value
+      description: Motion config parameter value
+      required: true
+      advanced: false
+      example: "on"
+      default: ""
+      selector:
+        text:
+    persist:
+      name: Persist
+      description: Persist the value to config file
+      required: false
+      advanced: false
+      example: "true"
+      default: false
+      selector:
+        boolean:
+
+makemovie:
+  name: Make Movie
+  description: Start a movie on the motion daemon
+  target:
+    entity:
+      integration: motion_frontend
+
+snapshot:
+  name: Snapshot
+  description: Takes a snapshot of the current camera feed on motion
+  target:
+    entity:
+      integration: motion_frontend

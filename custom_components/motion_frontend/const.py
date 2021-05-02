@@ -2,7 +2,7 @@
 from .motionclient import TlsMode
 
 DOMAIN = "motion_frontend"
-PLATFORMS = ["camera"]
+PLATFORMS = ["camera", "alarm_control_panel"]
 
 
 CONF_PORT_DEFAULT = 8080
@@ -52,7 +52,7 @@ CONF_MEDIASOURCE = "media_source"
 
 
 # published states
-STATE_MOTION = "Motion" #motion server detected motion on the stream
+#STATE_MOTION = "Motion" #motion server detected motion on the stream
 
 # a bunch of attributes to add to the state
 EXTRA_ATTR_FILENAME = "filename"
