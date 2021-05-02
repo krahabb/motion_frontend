@@ -1,6 +1,6 @@
 """An Http API Client to interact with motion server"""
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable, Union
 from urllib.parse import urljoin
 from enum import Enum
 from html.parser import HTMLParser
@@ -34,6 +34,14 @@ class TlsMode(Enum):
     STRICT = 3 # use TLS with all the goodies (based on default aiohttp SSL policy)
 
 
+"""
+    default MotionCamera builder: this can be overriden by passing a similar function
+    into MotionHttpClient constructor
+"""
+def _default_camera_factory(client: "MotionHttpClient", id: int) -> "MotionCamera":
+    return MotionCamera(client, id)
+
+
 class MotionHttpClient:
 
     DEFAULT_TIMEOUT = 10
@@ -42,7 +50,8 @@ class MotionHttpClient:
             username = None, password = None,
             tlsmode: TlsMode = TlsMode.AUTO,
             session: aiohttp.client.ClientSession = None,
-            logger: logging.Logger = None):
+            logger: logging.Logger = None,
+            camera_factory: Callable[["MotionHttpClient", int], "MotionCamera"] = _default_camera_factory):
         self._host = host
         self._port = port
         self._username = username
@@ -51,6 +60,7 @@ class MotionHttpClient:
         self._tlsmode: TlsMode = tlsmode
         self._session = session or aiohttp.ClientSession()
         self._logger = logger or logging.getLogger(__name__)
+        self._camera_factory = camera_factory
         self._server_url = None # established only on first succesful connection
         self._close_session = (session is None)
         self._conFailed = False
@@ -65,6 +75,7 @@ class MotionHttpClient:
         self._feature_webhtml = False # report if the webctrl server is configured for html
         self._feature_advancedstream = False # if True (from ver 4.2 on) allows more uri options and multiple streams on the same port
         self._feature_tls = False
+        self._feature_globalactions = False # if True (from ver 4.2 on) we can globally start/pause detection by issuing on threadid = 0
         self._configs : Dict[int, Dict[str, Any]] = {}
         self._cameras : Dict[int, 'MotionCamera'] = {}
         self._requestheaders = {
@@ -78,8 +89,9 @@ class MotionHttpClient:
             )
 
 
-    def __getattr__(self, attr):
-        return self._configs[0][attr]
+    @staticmethod
+    def generate_url(host, port, proto = "http") -> str:
+        return f"{proto}://{host}:{port}"
 
 
     @property
@@ -100,13 +112,18 @@ class MotionHttpClient:
 
 
     @property
+    def is_available(self) -> bool:
+        return not self._conFailed
+
+
+    @property
     def unique_id(self) -> str:
         return f'{self._host}_{self._port}'
 
 
     @property
-    def is_available(self) -> bool:
-        return not self._conFailed
+    def name(self) -> str:
+        return f'motion@{self._host}'
 
 
     @property
@@ -143,11 +160,12 @@ class MotionHttpClient:
         return self._cameras
 
 
-    def getcamera(self, camera_id):
+    def getcamera(self, camera_id) -> 'MotionCamera':
         for camera in self._cameras.values():
             if camera.camera_id == camera_id:
                 return camera
         return None
+
 
     async def close(self) -> None:
         if self._session and self._close_session:
@@ -155,14 +173,14 @@ class MotionHttpClient:
 
 
     async def update(self, updatecameras: bool = False):
-        content, headers = await self._request("/")
+        content, _ = await self.async_request("/")
 
         self._cameras.clear()
         self._configs.clear()
 
         async def add_camera(id: int):
-            self._configs[id] = await self.config_list(id)
-            self._cameras[id] = MotionCamera(self, id)
+            self._configs[id] = await self.async_config_list(id)
+            self._cameras[id] = self._camera_factory(self, id)
             return
 
         # checking content_type is not reliable since
@@ -206,27 +224,24 @@ class MotionHttpClient:
                 self._ver_build = int(match_version.group(3))
 
         if 0 not in self._configs.keys():
-            self._configs[0] = await self.config_list(0)
+            self._configs[0] = await self.async_config_list(0)
 
+        # here we're not relying on self._version being correctly parsed
+        # since the matching code could fail in future
+        # I prefer to rely on a well known config param which should be more stable
         self._feature_tls = ("webcontrol_tls" in self.config)
         self._feature_advancedstream = self._feature_tls # these appear at the same time ;)
+        self._feature_globalactions = self._feature_tls
 
-        if updatecameras: # request also connection status
-            try:
-                content, headers = await self._request("/0/detection/connection")
-                for match in re.finditer(r"\s*(\d+).*(OK|Lost).*\n", content):
-                    camera_id = int(match.group(1))
-                    value = match.group(2)
-                    self.getcamera(camera_id)._connected = (value == "OK")
-            except Exception as exception:
-                pass
+        if updatecameras: # request also camera status
+            await self.async_detection_status()
 
         return
 
 
-    async def config_list(self, id) -> Dict[str, Any]:
+    async def async_config_list(self, id) -> Dict[str, Any]:
         config = {}
-        content, headers = await self._request(f"/{id}/config/list")
+        content, _ = await self.async_request(f"/{id}/config/list")
         if content:
             try:
                 if content.startswith("<!DOCTYPE html>"):
@@ -249,20 +264,114 @@ class MotionHttpClient:
 
         return config
 
-    async def config_set(self, param: str, value: Any, force: bool = False, id: int = 0):
+
+    async def async_config_set(self, param: str, value: Any, force: bool = False, persist: bool = False, id: int = 0):
 
         config = self._configs.get(id)
         if (force is False) and config and (config.get(param) == value):
             return
 
-        await self._request(f"/{id}/config/set?{param}={value}")
+        await self.async_request(f"/{id}/config/set?{param}={value}")
+
+        if persist:
+            await self.async_request(f"/{id}/config/write")
 
         if config:
             config[param] = value
 
         return
 
-    async def _request(self, api_url, method: str = 'GET', timeout=DEFAULT_TIMEOUT) -> str:
+
+    async def async_detection_status(self, id: int = 0) -> None:
+        """
+            When we want to poll the status (even for a single camera)
+            we'll try to optmize and just request the full camera list states
+            in order to not 'strike' the server webctrl with a load of requests
+
+            id - is an hint on which camera wants an update in order
+            to handle legacy webctrl which doesnt support full list query
+
+            Note on exceptions: at the moment we're trying our best to make this run
+            until the end 'silencing' intermediate exceptions and just warning
+            this is not a critical feature so we can live without it
+        """
+        try:
+            content, _ = await self.async_request(f"/{id}/detection/connection")
+            for match in re.finditer(r"\s*(\d+).*(OK|Lost).*\n", content):
+                try:
+                    self.getcamera(int(match.group(1)))._setconnected(match.group(2) == "OK")
+                except Exception as exception:
+                    self._logger.warning(str(exception))
+        except Exception as exception:
+            self._logger.warning(str(exception))
+
+        try:
+            content: str = ""
+            if id or self._feature_globalactions:
+                #recover all cameras in 1 pass
+                content, _ = await self.async_request(f"/{id}/detection/status")
+            else:
+                for _id in self.cameras.keys():
+                    addcontent, _ = await self.async_request(f"/{_id}/detection/status")
+                    content += addcontent
+            for match in re.finditer(r"\s*(\d+).*(ACTIVE|PAUSE)", content):
+                try:
+                    self.getcamera(int(match.group(1)))._setpaused(match.group(2) == "PAUSE")
+                except Exception as exception:
+                    self._logger.warning(str(exception))
+        except Exception as exception:
+            self._logger.warning(str(exception))
+
+        return
+
+
+    async def async_detection_start(self, id: int = None):
+        try:
+            if id or self._feature_globalactions:
+                response, _ = await self.async_request(f"/{id or 0}/detection/start")
+                # we might get a response or not...(html mode doesnt?)
+                paused = False # optimistic: should be instead invoke detection_status?
+                if "paused" in response:
+                    # not sure if it happens that the command fails on motion and
+                    # we still get a response. This is a guess
+                    paused = True
+                if id:
+                    self._cameras[id]._setpaused(paused)
+                else:
+                    for camera in self._cameras.values():
+                        camera._setpaused(paused)
+            else:
+                for _id in self._cameras:
+                    await self.async_detection_start(_id)
+
+        except Exception as exception:
+            self._logger.warning(str(exception))
+
+
+    async def async_detection_pause(self, id: int = None):
+        try:
+            if id or self._feature_globalactions:
+                response, _ = await self.async_request(f"/{id or 0}/detection/pause")
+                # we might get a response or not...(html mode doesnt?)
+                paused = True # optimistic: should be instead invoke detection_status?
+                if "resumed" in response:
+                    # not sure if it happens that the command fails on motion and
+                    # we still get a response. This is a guess
+                    paused = False
+                if id:
+                    self._cameras[id]._setpaused(paused)
+                else:
+                    for camera in self._cameras.values():
+                        camera._setpaused(paused)
+            else:
+                for _id in self._cameras:
+                    await self.async_detection_pause(_id)
+
+        except Exception as exception:
+            self._logger.warning(str(exception))
+
+
+    async def async_request(self, api_url, timeout=DEFAULT_TIMEOUT) -> str:
         if self._conFailed:
             if (datetime.now()-self.disconnected).total_seconds() < self.reconnect_interval:
                 return None
@@ -277,9 +386,8 @@ class MotionHttpClient:
             try:
                 with async_timeout.timeout(timeout):
                     url = URL(self._server_url + api_url)
-                    #url = urljoin(self._server_url, api_url)
                     response = await self._session.request(
-                        method,
+                        "GET",
                         url,
                         auth=self._auth,
                         headers=self._requestheaders,
@@ -319,22 +427,14 @@ class MotionHttpClient:
             return text, response.headers
 
 
-    @staticmethod
-    def generate_url(host, port, proto = "http") -> str:
-        return f"{proto}://{host}:{port}"
-
 
 class MotionCamera:
 
     def __init__(self, client: MotionHttpClient, id: int):
         self._client : MotionHttpClient = client
         self._id: int = id
-        self._camera_id: int = self.config.get("camera_id", id) # cache here since we're using it a lot
-        self._connected = False
-
-
-    def __getattr__(self, attr):
-        return self.config[attr]
+        self._connected = False # netcam connected in 'motion' terms
+        self._paused = False # detection paused in 'motion' terms
 
 
     @property
@@ -354,15 +454,31 @@ class MotionCamera:
         while in legacy webctrl it appears here and there (some labels in webctrl responses)
         example GET /0/detection/connection returns the camera list enumerating cameras and labelling by camera_id
         for this reason, in order to correctly match a camera we need this 'hybrid' since camera_id usually defaults
-        to the motion thread_id when not explicitly comfigured
+        to the motion thread_id when not explicitly configured
         """
-        return self._camera_id
+        return self.config.get("camera_id", id)
 
 
     @property
     def connected(self) -> bool:
         return self._connected
+    def _setconnected(self, connected: bool):
+        if self._connected != connected:
+            self._connected = connected
+            self.on_connected_changed()
+    def on_connected_changed(self):
+        pass # stub -> override or whatever to manage notification
 
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+    def _setpaused(self, paused: bool):
+        if self._paused != paused:
+            self._paused = paused
+            self.on_paused_changed()
+    def on_paused_changed(self):
+        pass # stub -> override or whatever to manage notification
 
     @property
     def config(self) -> Dict[str, object]:
@@ -396,8 +512,13 @@ class MotionCamera:
             return f"{self._client.stream_url}/{self._id}/current"
 
 
-    @property
-    def name(self) -> str:
-        return self.config.get("camera_name", self._id)
+    async def async_config_set(self, param: str, value: Any, force: bool = False, persist: bool = False):
+        await self._client.async_config_set(param=param, value=value, force=force, persist=persist, id=self._id)
 
 
+    async def async_makemovie(self):
+        await self._client.async_request(f"/{self._id}/action/makemovie")
+
+
+    async def async_snapshot(self):
+        await self._client.async_request(f"/{self._id}/action/snapshot")
