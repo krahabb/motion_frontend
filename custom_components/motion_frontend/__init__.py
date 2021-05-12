@@ -21,7 +21,12 @@ from homeassistant.const import (
     CONF_USERNAME, CONF_PASSWORD, ATTR_AREA_ID
 )
 
-from .motionclient import MotionHttpClient, MotionHttpClientError, MotionHttpClientConnectionError
+
+from .motionclient import (
+    MotionHttpClient, TlsMode,
+    MotionHttpClientError, MotionHttpClientConnectionError,
+    config_schema as cs
+)
 
 from .helpers import (
     LOGGER, LOGGER_trap,
@@ -121,7 +126,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         try:
             media_dir_id = f"{DOMAIN}_{api.unique_id}"
             if media_dir_id not in hass.config.media_dirs:
-                target_dir = api.config.get("target_dir")
+                target_dir = api.config.get(cs.TARGET_DIR)
                 if target_dir:
                     raise_if_invalid_path(target_dir)
                     if os.access(target_dir, os.R_OK):
@@ -155,7 +160,8 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     )
 
     if unload_ok:
-        api: MotionFrontendApi = hass.data[DOMAIN][config_entry.entry_id]
+        hassdata = hass.data[DOMAIN]
+        api: MotionFrontendApi = hassdata[config_entry.entry_id]
         await api.close()
         if api.webhook_id:
             hass.components.webhook.async_unregister(api.webhook_id)
@@ -168,7 +174,8 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         if api.unsub_entry_update_listener:
             api.unsub_entry_update_listener()
             api.unsub_entry_update_listener = None
-        hass.data[DOMAIN].pop(config_entry.entry_id)
+        hassdata.pop(config_entry.entry_id)
+
 
     return unload_ok
 
@@ -177,17 +184,19 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 class MotionFrontendApi(MotionHttpClient):
 
     def __init__(self, hass: HomeAssistant, data: dict):
-        MotionHttpClient.__init__(self, data[CONF_HOST], data[CONF_PORT],
-                        username=data.get(CONF_USERNAME), password=data.get(CONF_PASSWORD),
-                        tlsmode=MAP_TLS_MODE[data.get(CONF_TLS_MODE, CONF_OPTION_AUTO)],
-                        session=async_get_clientsession(hass),
-                        logger=LOGGER,
-                        camera_factory=_entity_camera_factory)
         self.hass = hass
+        self.config_data = data
         self.webhook_id: str = None
         self.webhook_url: str = None
         self.media_dir_id: str = None
         self.unsub_entry_update_listener = None
+        self.alarm_control_panel = None
+        MotionHttpClient.__init__(self, data[CONF_HOST], data[CONF_PORT],
+                        username=data.get(CONF_USERNAME), password=data.get(CONF_PASSWORD),
+                        tlsmode=MAP_TLS_MODE.get(data.get(CONF_TLS_MODE, CONF_OPTION_AUTO), TlsMode.AUTO),
+                        session=async_get_clientsession(hass),
+                        logger=LOGGER,
+                        camera_factory=_entity_camera_factory)
 
     @property
     def device_info(self):
@@ -206,13 +215,12 @@ class MotionFrontendApi(MotionHttpClient):
 
             LOGGER.debug("Received webhook - (%s)", data)
 
-            camera_id = int(data.get("camera_id"))
-            camera = self.getcamera(camera_id)
+            camera = self.getcamera(data.get("camera_id"))
             if self.media_dir_id:
                 try:# fix the path as a media_source compatible url
                     filename = data.get(EXTRA_ATTR_FILENAME)
                     if filename:
-                        filename = Path(filename).relative_to(self.config.get("target_dir"))
+                        filename = Path(filename).relative_to(self.config.get(cs.TARGET_DIR))
                         data[EXTRA_ATTR_FILENAME] = f"{self.media_dir_id}/{str(filename)}"
                 except:
                     pass
@@ -230,6 +238,12 @@ class MotionFrontendApi(MotionHttpClient):
         return
 
 
+    def notify_state_changed(self, camera: MotionFrontendCamera):
+        """
+        called by cameras to synchronously update alarm panel
+        """
+        if self.alarm_control_panel:
+            self.alarm_control_panel.notify_state_changed(camera)
 
-def _entity_camera_factory(client: MotionHttpClient, id: int):
+def _entity_camera_factory(client: MotionHttpClient, id: str):
     return MotionFrontendCamera(client, id)

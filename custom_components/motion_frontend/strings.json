@@ -26,9 +26,20 @@
     }
   },
   "options": {
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]"
+    },
     "step": {
       "init": {
-        "title": "",
+        "title": "Motion Frontend options",
+        "description": "Choose an option to edit",
+        "data": {
+          "select_flow": "Select the option to configure or leave empty to exit and save"
+        }
+      },
+      "connection": {
+        "title": "Connection",
         "description": "",
         "data": {
           "username": "[%key:common::config_flow::data::username%]",
@@ -37,6 +48,13 @@
           "webhook_mode": "Webhook mode",
           "webhook_address": "Webhook address",
           "media_source": "Mount motion server recording path as a media library"
+        }
+      },
+      "alarm": {
+        "title": "Alarm Control Panel",
+        "description": "Configure alarm panel",
+        "data": {
+          "pin": "Pin code to arm/disarm alarm"
         }
       }
     }

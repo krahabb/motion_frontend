@@ -1,44 +1,185 @@
 {
-    "title": "Motion Frontend",
-    "config": {
-      "abort": {
-        "single_instance_allowed": "Already configured. Only a single configuration possible."
-      },
-      "error": {
-        "cannot_connect": "Unable to connect",
-        "invalid_auth": "Authentication error"
-      },
-      "step": {
-        "user": {
-          "title": "Motion server",
-          "description": "Configure motion server connection",
-          "data": {
-            "host": "Host",
-            "port": "Port",
-            "username": "Username",
-            "password": "Password",
-            "tls_mode": "TLS mode",
-            "webhook_mode": "Webhook mode",
-            "webhook_address": "Webhook address",
-            "media_source": "Mount motion server recording path as a media library"
-          }
+  "title": "Motion Frontend",
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Already configured. Only a single configuration possible."
+    },
+    "error": {
+      "cannot_connect": "Unable to connect",
+      "invalid_auth": "Authentication error"
+    },
+    "step": {
+      "user": {
+        "title": "Motion server",
+        "description": "Configure motion server connection",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "tls_mode": "TLS mode",
+          "webhook_mode": "Webhook mode",
+          "webhook_address": "Webhook address",
+          "media_source": "Mount motion server recording path as a media library"
         }
       }
+    }
+  },
+  "options": {
+    "error": {
+      "cannot_connect": "Unable to connect",
+      "invalid_auth": "Authentication error"
     },
-    "options": {
-      "step": {
-        "init": {
-          "title": "Motion server",
-          "description": "Configure motion server connection",
-          "data": {
-            "username": "Username",
-            "password": "Password",
-            "tls_mode": "TLS mode",
-            "webhook_mode": "Webhook mode",
-            "webhook_address": "Webhook address",
-            "media_source": "Mount motion server recording path as a media library"
-          }
+    "step": {
+      "init": {
+        "title": "Motion Frontend options",
+        "description": "Choose an option to edit",
+        "data": {
+          "select_flow": "Select the option to configure or 'None' to exit and save"
+        }
+      },
+      "connection": {
+        "title": "Connection",
+        "description": "Configure motion server connection",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "tls_mode": "TLS mode",
+          "webhook_mode": "Webhook mode",
+          "webhook_address": "Webhook address",
+          "media_source": "Mount motion server recording path as a media library"
+        }
+      },
+      "alarm": {
+        "title": "Alarm Control Panel",
+        "description": "Configure alarm panel",
+        "data": {
+          "pin": "Pin code to arm/disarm (empty to disable pin)",
+          "disarmhome_cameras": "Disarmed cameras for Home state",
+          "disarmaway_cameras": "Disarmed cameras for Away state",
+          "disarmnight_cameras": "Disarmed cameras for Night state",
+          "disarmbypass_cameras": "Disarmed cameras for Bypass state",
+          "pause_disarmed": "Pause motion detection for disarmed cameras"
+        }
+      },
+      "config": {
+        "title": "Motion configuration",
+        "description": "Configure {camera_id} - {config_section}",
+        "data": {
+          "select_config": "Select a section to configure or 'None' to exit and save",
+
+          "setup_mode": "setup_mode",
+          "camera_id": "camera_id",
+          "camera_name": "camera_name",
+          "target_dir": "target_dir",
+          "log_file": "log_file",
+          "log_level": "log_level",
+          "log_type": "log_type",
+          "logfile": "logfile",
+
+          "netcam_url": "netcam_url",
+          "netcam_highres": "netcam_highres",
+          "netcam_userpass": "netcam_userpass",
+          "netcam_decoder": "netcam_decoder",
+          "netcam_keepalive": "netcam_keepalive",
+          "netcam_use_tcp": "netcam_use_tcp",
+
+          "stream_port": "stream_port",
+          "stream_auth_method": "stream_auth_method",
+          "stream_authentication": "stream_authentication",
+          "stream_tls": "stream_tls",
+          "stream_grey": "stream_grey",
+          "stream_maxrate": "stream_maxrate",
+          "stream_motion": "stream_motion",
+          "stream_quality": "stream_quality",
+          "stream_preview_method": "stream_preview_method",
+
+          "width": "width",
+          "height": "height",
+          "framerate": "framerate",
+          "minimum_frame_time": "minimum_frame_time",
+          "rotate": "rotate",
+          "flip_axis": "flip_axis",
+          "locate_motion_mode": "locate_motion_mode",
+          "locate_motion_style": "locate_motion_style",
+          "text_left": "text_left",
+          "text_right": "text_right",
+          "text_changes": "text_changes",
+          "text_scale": "text_scale",
+          "text_event": "text_event",
+
+          "emulate_motion": "emulate_motion",
+          "threshold": "threshold",
+          "threshold_maximum": "threshold_maximum",
+          "threshold_tune": "threshold_tune",
+          "noise_level": "noise_level",
+          "noise_tune": "noise_tune",
+          "despeckle_filter": "despeckle_filter",
+          "area_detect": "area_detect",
+          "mask_file": "mask_file",
+          "mask_privacy": "mask_privacy",
+          "smart_mask_speed": "smart_mask_speed",
+          "lightswitch_percent": "lightswitch_percent",
+          "lightswitch_frames": "lightswitch_frames",
+          "minimum_motion_frames": "minimum_motion_frames",
+          "event_gap": "event_gap",
+          "pre_capture": "pre_capture",
+          "post_capture": "post_capture",
+          "lightswitch": "lightswitch",
+
+          "on_event_start": "on_event_start",
+          "on_event_end": "on_event_end",
+          "on_picture_save": "on_picture_save",
+          "on_motion_detected": "on_motion_detected",
+          "on_area_detected": "on_area_detected",
+          "on_movie_start": "on_movie_start",
+          "on_movie_end": "on_movie_end",
+          "on_camera_lost": "on_camera_lost",
+          "on_camera_found": "on_camera_found",
+
+          "picture_output": "picture_output",
+          "output_pictures": "output_pictures",
+          "picture_output_motion": "picture_output_motion",
+          "output_debug_pictures": "output_debug_pictures",
+          "picture_type": "picture_type",
+          "picture_quality": "picture_quality",
+          "quality": "quality",
+          "picture_exif": "picture_exif",
+          "exif_text": "exif_text",
+          "picture_filename": "picture_filename",
+          "snapshot_interval": "snapshot_interval",
+          "snapshot_filename": "snapshot_filename",
+          
+          "movie_output": "movie_output",
+          "ffmpeg_output_movies": "ffmpeg_output_movies",
+          "movie_output_motion": "movie_output_motion",
+          "ffmpeg_output_debug_movies": "ffmpeg_output_debug_movies",
+          "movie_max_time": "movie_max_time",
+          "max_movie_time": "max_movie_time",
+          "movie_bps": "movie_bps",
+          "ffmpeg_bps": "ffmpeg_bps",
+          "movie_quality": "movie_quality",
+          "ffmpeg_variable_bitrate": "ffmpeg_variable_bitrate",
+          "movie_codec": "movie_codec",
+          "ffmpeg_video_codec": "ffmpeg_video_codec",
+          "movie_duplicate_frames": "movie_duplicate_frames",
+          "ffmpeg_duplicate_frames": "ffmpeg_duplicate_frames",
+          "movie_passthrough": "movie_passthrough",
+          "ffmpeg_passthrough": "ffmpeg_passthrough",
+          "movie_filename": "movie_filename",
+          "movie_extpipe_use": "movie_extpipe_use",
+          "use_extpipe": "use_extpipe",
+          "movie_extpipe": "movie_extpipe",
+          "extpipe": "extpipe",
+
+          "timelapse_interval": "timelapse_interval",
+          "timelapse_mode": "timelapse_mode",
+          "timelapse_fps": "timelapse_fps",
+          "timelapse_codec": "timelapse_codec",
+          "timelapse_filename": "timelapse_filename"
+
         }
       }
     }
   }
+}

@@ -7,14 +7,17 @@ PLATFORMS = ["camera", "alarm_control_panel"]
 
 CONF_PORT_DEFAULT = 8080
 
-# various enum modes
-CONF_OPTION_NONE = "None"
-CONF_OPTION_DEFAULT = "Default"
-CONF_OPTION_FORCE = "Force"
-CONF_OPTION_AUTO = "Auto"
-CONF_OPTION_INTERNAL = "Internal"
-CONF_OPTION_EXTERNAL = "External"
-CONF_OPTION_CLOUD = "Cloud"
+# various enum modes for option 'select'
+CONF_OPTION_NONE = "none"
+CONF_OPTION_DEFAULT = "default"
+CONF_OPTION_FORCE = "force"
+CONF_OPTION_AUTO = "auto"
+CONF_OPTION_INTERNAL = "internal"
+CONF_OPTION_EXTERNAL = "external"
+CONF_OPTION_CLOUD = "cloud"
+CONF_OPTION_CONNECTION = "connection"
+CONF_OPTION_ALARM = "alarm"
+
 
 CONF_TLS_MODE = "tls_mode"
 CONF_TLS_MODE_OPTIONS = (
@@ -50,13 +53,25 @@ CONF_WEBHOOK_ADDRESS_OPTIONS = (
 # option media_source: try to expose the motion target_dir as a media library path in HA
 CONF_MEDIASOURCE = "media_source"
 
+# OptionsFlow: async_step_alarm
+# list of camera ids to 'disarm' under different alarm arming state
+# by default an empty list in conf will arm all of the cameras
+CONF_ALARM_DISARMHOME_CAMERAS = "disarmhome_cameras"
+CONF_ALARM_DISARMAWAY_CAMERAS = "disarmaway_cameras"
+CONF_ALARM_DISARMNIGHT_CAMERAS = "disarmnight_cameras"
+CONF_ALARM_DISARMBYPASS_CAMERAS = "disarmbypass_cameras"
+CONF_ALARM_PAUSE_DISARMED = "pause_disarmed" # if a camera is 'disarmed' pause motion detection
 
-# published states
-#STATE_MOTION = "Motion" #motion server detected motion on the stream
+
 
 # a bunch of attributes to add to the state
 EXTRA_ATTR_FILENAME = "filename"
 EXTRA_ATTR_EVENT_ID = "event_id"
+EXTRA_ATTR_TRIGGERED = "triggered"
+EXTRA_ATTR_PAUSED = "paused"
+EXTRA_ATTR_CONNECTED = "connected"
+EXTRA_ATTR_LAST_TRIGGERED = "last_triggered" # alarm extra_attr: entity id of last alarm triggering camera
+EXTRA_ATTR_LAST_PROBLEM = "last_problem" # alarm extra_attr: entity id of last alarm 'problem' camera
 
 
 ON_EVENT_START = "on_event_start" # start of motion

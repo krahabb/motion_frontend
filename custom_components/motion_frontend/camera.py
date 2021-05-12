@@ -2,6 +2,13 @@ from typing import Any, Mapping
 import voluptuous as vol
 from datetime import timedelta
 
+from homeassistant.const import (
+    ATTR_ATTRIBUTION, CONF_NAME,
+    STATE_PAUSED, STATE_PROBLEM, STATE_ALARM_TRIGGERED
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_platform
+from homeassistant.helpers.typing import StateType
 from homeassistant.components.camera import (
     SUPPORT_STREAM,
     STATE_IDLE, STATE_RECORDING, STATE_STREAMING
@@ -13,48 +20,28 @@ from homeassistant.components.mjpeg.camera import (
     HTTP_BASIC_AUTHENTICATION, HTTP_DIGEST_AUTHENTICATION,
     filter_urllib3_logging,
 )
-from homeassistant.const import (
-    ATTR_ATTRIBUTION, CONF_NAME,
-    STATE_PAUSED, STATE_PROBLEM, STATE_ALARM_TRIGGERED
-)
-from homeassistant.helpers import entity_platform
-from homeassistant.helpers.typing import StateType
 
 from .motionclient import (
     TlsMode,
     MotionHttpClient, MotionHttpClientError,
-    MotionCamera
+    MotionCamera,
+    config_schema as cs
 )
+
 from .helpers import LOGGER
 from .const import (
-    #ATTRIBUTION,
-    #CAMERA_SCAN_INTERVAL_SECS,
     DOMAIN,
-    #STATE_MOTION,
     EXTRA_ATTR_EVENT_ID, EXTRA_ATTR_FILENAME,
+    EXTRA_ATTR_PAUSED, EXTRA_ATTR_TRIGGERED, EXTRA_ATTR_CONNECTED,
     ON_CAMERA_FOUND, ON_CAMERA_LOST,
     ON_EVENT_START, ON_EVENT_END,
     ON_AREA_DETECTED, ON_MOTION_DETECTED,
     ON_MOVIE_START, ON_MOVIE_END, ON_PICTURE_SAVE
 )
 
-#SCAN_INTERVAL = timedelta(seconds=CAMERA_SCAN_INTERVAL_SECS)
-
-
-#_DEV_EN_ALT = "enable_alerts"
-#_DEV_DS_ALT = "disable_alerts"
-#_DEV_EN_REC = "start_recording"
-#_DEV_DS_REC = "stop_recording"
-#_DEV_SNAP = "snapshot"
-    #_DEV_EN_ALT: "async_enable_alerts",
-    #_DEV_DS_ALT: "async_disable_alerts",
-    #_DEV_EN_REC: "async_start_recording",
-    #_DEV_DS_REC: "async_stop_recording",
-    #_DEV_SNAP: "async_snapshot",
 
 SERVICE_KEY_PARAM = "param"
 SERVICE_KEY_VALUE = "value"
-SERVICE_CONFIG_SET = "config_set"
 CAMERA_SERVICES = (
     ("config_set", {
         vol.Required(SERVICE_KEY_PARAM): str,
@@ -87,9 +74,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         platform.async_register_entity_service(service, schema, method)
 
 
+async def async_unload_entry(hass: HomeAssistant, config_entry):
+
+    if len(hass.data[DOMAIN]) == 1: # last config_entry for DOMAIN
+        for service_entry in CAMERA_SERVICES:
+            hass.services.async_remove(DOMAIN, service_entry[0])
+
+
 class MotionFrontendCamera(MjpegCamera, MotionCamera):
 
-    def __init__(self, client: MotionHttpClient, id: int):
+    def __init__(self, client: MotionHttpClient, id: str):
         MotionCamera.__init__(self, client, id)
         self._unique_id = f"{client.unique_id}_{self.camera_id}"
         self._recording = False
@@ -105,9 +99,9 @@ class MotionFrontendCamera(MjpegCamera, MotionCamera):
             CONF_VERIFY_SSL: client.tlsmode == TlsMode.STRICT
         }
         try:
-            stream_auth_method = self.config.get("stream_auth_method")
+            stream_auth_method = self.config.get(cs.STREAM_AUTH_METHOD)
             if stream_auth_method:
-                stream_authentication = self.config.get("stream_authentication", "username:password")
+                stream_authentication = self.config.get(cs.STREAM_AUTHENTICATION, "username:password")
                 stream_authentication = stream_authentication.split(":")
                 device_info[CONF_USERNAME] = stream_authentication[0]
                 device_info[CONF_PASSWORD] = stream_authentication[-1]
@@ -130,7 +124,7 @@ class MotionFrontendCamera(MjpegCamera, MotionCamera):
 
     @property
     def supported_features(self) -> int:
-        return SUPPORT_STREAM
+        return 0
 
 
     @property
@@ -150,7 +144,7 @@ class MotionFrontendCamera(MjpegCamera, MotionCamera):
 
     @property
     def name(self) -> str:
-        return self.config.get("camera_name", self.camera_id)
+        return self.config.get(cs.CAMERA_NAME, self.camera_id)
 
 
     @property
@@ -192,11 +186,14 @@ class MotionFrontendCamera(MjpegCamera, MotionCamera):
             # only pull the stream/image when the remote is connected
             # so we both save bandwith and we're able to deliver an
             # old snapshot when camera get out of reach
-            if image := await super().async_camera_image():
-                self._camera_image = image
-                self._available = True
-            else:
-                self._available = False
+            try:
+                if image := await super().async_camera_image():
+                    self._camera_image = image
+                    if not self._available:
+                        self._updatestate()
+            except Exception as exception:
+                LOGGER.debug("Error (%s) fetching camera image", str(exception))
+                self._set_state(None)
         return self._camera_image
 
     """
@@ -253,20 +250,27 @@ class MotionFrontendCamera(MjpegCamera, MotionCamera):
     def _settriggered(self, triggered: bool):
         if self._triggered != triggered:
             self._triggered = triggered
+            self._extra_attr[EXTRA_ATTR_TRIGGERED] = triggered
             self._updatestate()
 
 
     #override MotionCamera
     def on_connected_changed(self):
+        self._extra_attr[EXTRA_ATTR_CONNECTED] = self.connected
         self._updatestate()
 
 
     #override MotionCamera
     def on_paused_changed(self):
+        self._extra_attr[EXTRA_ATTR_PAUSED] = self.paused
         self._updatestate()
 
 
     def _updatestate(self):
+        """
+        called every time an underlying state related property changes
+        this will not always trigger an HA state change (see _set_state)
+        """
         if self.connected:
             if self._recording:
                 self._set_state(STATE_RECORDING)
@@ -278,10 +282,16 @@ class MotionFrontendCamera(MjpegCamera, MotionCamera):
                 self._set_state(STATE_IDLE)
         else:
             self._set_state(STATE_PROBLEM)
+        # we'll notify our api here since HA state could have not changed
+        # but some inner property has
+        self.client.notify_state_changed(self)
 
 
     def _set_state(self, state: str) -> None:
-        if self._state != state:
-            self._state = state
-            if self.hass and self.enabled:
-                self.async_write_ha_state()
+        # we'll get here since an underlying state changed
+        # we always save to HA since even tho _state has not changed
+        # something might have in attributes
+        self._state = state
+        self._available = state is not None
+        if self.hass and self.enabled:
+            self.async_write_ha_state()
