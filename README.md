@@ -47,7 +47,6 @@ A few hints:
 - 'webcontrol_auth_method' no auth works for the best but also basic_auth ('1' in motion.conf). digest_auth not really tested: I'd expect it doesnt work
 - 'webctrl_tls' works. Have a read below for the explanation on how to setup my component
 - 'stream_tls' should work: the component should be prepared for that and handle the stream correctly but...you never know with TLS
-- 'stream_auth_method' doesn't work beside 'None' (i.e. '0'). My code here is still some steps behind: not much, expect this to work sooner than later
 - 'stream_port' works good when only configured at the root motion.conf. In motion 4.2 and later all the camera streams are accessible through a single port and my code works for this. The code should also work if you set different stream ports for different cameras (this is expecially true for motion 'legacy' pre 4.2). The component code will try to understand automatically which scenario is running and do the best to stream out of it. If something doesn't work please report it together with some hints on your motion.conf(s) and version
 
 Once installed in HA you can add an entry configuration by going to the 'Integrations' pane in HA and look for 'Motion Frontend' (refresh browser cache if needed).
@@ -93,6 +92,7 @@ If your motion server runs on the same HA machine (meaning they really share the
 - support camera entity with streaming and service interface
 - Alarm control panel to enable/disable motion detection and alarm triggering
 - Services to interact with motion daemon configuration and to enable/disable motion detection
+- (almost) Full motion parameters re-configuration through HA UI (access through Config Entry 'Options' in HA Integrations pane)
 
 ## References
 - [@motion]
