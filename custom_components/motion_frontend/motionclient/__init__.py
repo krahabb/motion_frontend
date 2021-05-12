@@ -564,7 +564,8 @@ class MotionCamera:
 
         port = self.config.get(cs.STREAM_PORT)
         if port:
-            return f"{MotionHttpClient.generate_url(self._client._host, port)}/current"
+            proto = "https" if self.config.get(cs.STREAM_TLS, False) else "http"
+            return f"{MotionHttpClient.generate_url(self._client._host, port, proto)}/current"
         else:
             return f"{self._client.stream_url}/{self._id}/current"
 
