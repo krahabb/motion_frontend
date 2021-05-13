@@ -51,7 +51,6 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
         self._api = api
         self._unique_id = f"{api.unique_id}_CP"
         self._name = f"{api.name} Alarm Panel"
-        self._available = api.is_available
         self._state = STATE_ALARM_DISARMED
         self._extra_attr = {}
         self._armmode = STATE_ALARM_DISARMED
@@ -136,7 +135,7 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
 
     @property
     def available(self) -> bool:
-        return self._available
+        return True
 
 
     @property
@@ -150,16 +149,22 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
 
 
     async def async_update(self):
-        # this polling is not necessary overall
-        # since we're able to get notified from camera events and 'push'
-        # state updates for this entity but sometimes when the server disconnects
-        # we'll idle out not being able to receive any state change (not even the disconnection)
+        """
+            this polling is not necessary overall
+            since we're able to get notified from camera events and 'push'
+            state updates for this entity but sometimes when the server disconnects
+            we'll idle out not being able to receive any state change (not even the disconnection)
+        """
+        """
         if self.enabled:# in HA terms I guess we shouldnt get here if disabled (but better safe than sorry)
             await self._api.async_detection_status()
             if self._available != self._api.is_available:
                 self._available = self._api.is_available
                 self.async_write_ha_state()
-
+        """
+        await self._api.async_detection_status()
+        if (not self._api.is_available) and (self._state != STATE_PROBLEM):
+            self._set_state(STATE_PROBLEM)
 
     async def async_added_to_hass(self) -> None:
         self._api.alarm_control_panel = self
