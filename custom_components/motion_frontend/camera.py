@@ -132,24 +132,6 @@ class MotionFrontendCamera(Camera, MotionCamera):
         self._camera_image = None # cached copy
         self._available = True
 
-        """
-        device_info = {
-            CONF_MJPEG_URL: self.stream_url,
-            CONF_STILL_IMAGE_URL: self.image_url,
-            CONF_VERIFY_SSL: client.tlsmode == TlsMode.STRICT
-        }
-        try:
-            stream_auth_method = self.config.get(cs.STREAM_AUTH_METHOD)
-            if stream_auth_method:
-                stream_authentication = self.config.get(cs.STREAM_AUTHENTICATION, "username:password")
-                stream_authentication = stream_authentication.split(":")
-                device_info[CONF_USERNAME] = stream_authentication[0]
-                device_info[CONF_PASSWORD] = stream_authentication[-1]
-                device_info[CONF_AUTHENTICATION] = HTTP_DIGEST_AUTHENTICATION if stream_auth_method == 2 else HTTP_BASIC_AUTHENTICATION
-        except Exception as exception:
-            LOGGER.warning("Error (%s) setting up camera authentication", str(exception))
-        MjpegCamera.__init__(self, device_info)
-        """
         Camera.__init__(self)
 
 
@@ -243,8 +225,7 @@ class MotionFrontendCamera(Camera, MotionCamera):
                     verify_ssl=(self.client.tlsmode == TlsMode.STRICT)
                     )
                 if stream_auth_method == cs.AUTH_MODE_BASIC:
-                    stream_authentication = self.config.get(cs.STREAM_AUTHENTICATION, "username:password")
-                    stream_authentication = stream_authentication.split(":")
+                    stream_authentication = self.stream_authentication
                     auth = aiohttp.BasicAuth(stream_authentication[0], stream_authentication[-1])
                 else:
                     auth = None
@@ -257,7 +238,7 @@ class MotionFrontendCamera(Camera, MotionCamera):
                     return self._camera_image
 
             except Exception as exception:
-                LOGGER.debug("Error (%s) fetching camera image", str(exception))
+                LOGGER.warning("Error (%s) fetching image from %s", str(exception), self.name)
                 self._set_state(None)
 
         return self._camera_image
@@ -273,8 +254,7 @@ class MotionFrontendCamera(Camera, MotionCamera):
         stream_auth_method = self.config.get(cs.STREAM_AUTH_METHOD)
         auth = None
         if stream_auth_method:
-            stream_authentication = self.config.get(cs.STREAM_AUTHENTICATION, "username:password")
-            stream_authentication = stream_authentication.split(":")
+            stream_authentication = self.stream_authentication
             if stream_auth_method == cs.AUTH_MODE_BASIC:
                 auth = HTTPBasicAuth(stream_authentication[0], stream_authentication[-1])
             elif stream_auth_method == cs.AUTH_MODE_DIGEST:
@@ -300,8 +280,7 @@ class MotionFrontendCamera(Camera, MotionCamera):
         if stream_auth_method == cs.AUTH_MODE_DIGEST:
             return await super().handle_async_mjpeg_stream(request)
         elif stream_auth_method == cs.AUTH_MODE_BASIC:
-            stream_authentication = self.config.get(cs.STREAM_AUTHENTICATION, "username:password")
-            stream_authentication = stream_authentication.split(":")
+            stream_authentication = self.stream_authentication
             auth = aiohttp.BasicAuth(stream_authentication[0], stream_authentication[-1])
 
         # connect to stream

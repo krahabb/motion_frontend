@@ -293,7 +293,7 @@ CAMERACONFIG_SET = (
 # list options which are valid and meaningful only at the global motion.conf
 GLOBALCONFIG_SET = (
     LOG_FILE, LOG_LEVEL, LOG_TYPE, LOGFILE,
-    WEBCONTROL_TLS
+    WEBCONTROL_TLS, STREAM_AUTHENTICATION
 )
 
 # list options which requires a thread restart to be in place

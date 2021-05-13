@@ -301,7 +301,8 @@ class MotionHttpClient:
         newvalue = cs.build_value(param, value)
         if id == cs.GLOBAL_ID: # motion will set all threads with this same value when setting global conf
             for config in self._configs.values():
-                config[param] = newvalue
+                if param in config: # some params are only relevant to global conf
+                    config[param] = newvalue
         else:
             if config:
                 config[param] = newvalue
@@ -568,6 +569,20 @@ class MotionCamera:
             return f"{MotionHttpClient.generate_url(self._client._host, port, proto)}/current"
         else:
             return f"{self._client.stream_url}/{self._id}/current"
+
+
+    @property
+    def stream_authentication(self) -> list:
+        """
+            return a valid pair of credentials for streaming purposes
+            Tryes to match what the motion daemon is especting since
+            this is usually a global conf param but you can set it per camera aswell
+            (at least in some releases?)
+        """
+        stream_authentication = self.config.get(cs.STREAM_AUTHENTICATION)
+        if not stream_authentication:
+            stream_authentication = self._client.config.get(cs.STREAM_AUTHENTICATION, ":")
+        return stream_authentication.split(":")
 
 
     async def async_config_set(self, param: str, value: Any, force: bool = False, persist: bool = False):
