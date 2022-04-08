@@ -1,4 +1,7 @@
 """Config flow to configure Agent devices."""
+from types import MappingProxyType
+from typing import MappingView
+from custom_components.motion_frontend.motionclient.config_schema import Descriptor, Param, SECTION_DATABASE, SECTION_MMALCAM, SECTION_TRACK, SECTION_V4L2
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -8,7 +11,7 @@ from homeassistant.config_entries import (
 from homeassistant.const import (
     CONF_HOST, CONF_PORT,
     CONF_USERNAME, CONF_PASSWORD,
-    CONF_PIN, CONF_ARMING_TIME,
+    CONF_PIN, CONF_ARMING_TIME, CONF_DELAY_TIME
 )
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -24,7 +27,7 @@ from .helpers import (
 )
 from .const import (
     DOMAIN, CONF_PORT_DEFAULT,
-    CONF_OPTION_NONE,
+    CONF_OPTION_NONE, CONF_OPTION_UNKNOWN,
     CONF_OPTION_CONNECTION, CONF_OPTION_ALARM,
     CONF_TLS_MODE, CONF_TLS_MODE_OPTIONS, MAP_TLS_MODE,
     CONF_WEBHOOK_MODE, CONF_WEBHOOK_MODE_OPTIONS,
@@ -50,36 +53,67 @@ CONF_SELECT_CONFIG = "select_config"
 CONF_SELECT_CONFIG_OPTIONS = {
     CONF_OPTION_NONE: CONF_OPTION_NONE,
     cs.SECTION_SYSTEM: "System setup",
-    cs.SECTION_NETCAM: "Network cameras",
     cs.SECTION_STREAM: "Streaming",
     cs.SECTION_IMAGE: "Image processing",
     cs.SECTION_MOTION: "Motion detection",
     cs.SECTION_SCRIPT: "Script / events",
     cs.SECTION_PICTURE: "Picture",
     cs.SECTION_MOVIE: "Movie",
-    cs.SECTION_TIMELAPSE: "Timelapse"
+    cs.SECTION_TIMELAPSE: "Timelapse",
+    cs.SECTION_NETCAM: "Network cameras",
+    cs.SECTION_V4L2: "V4L2 cameras",
+    cs.SECTION_MMALCAM: "Raspberry PI cameras",
+    cs.SECTION_DATABASE: "Database",
+    cs.SECTION_TRACK: "Tracking",
+    CONF_OPTION_UNKNOWN: "Miscellaneous" # add an entry to setup all of the config params we didn't normalize
 }
 
-def map_motion_cs_validator(descriptor: cs.Descriptor):
+def _map_motion_cs_validator(descriptor: cs.Descriptor):
     """
     We're defining schemas in motionclient library bu validators there
     are more exotic than HA allows to serialize: provide here a fallback
     for unsupported serializations
     """
+    if descriptor is None:
+        return str
     val = descriptor.validator
     if val is cs.validate_userpass:
         return str
     if isinstance(val, vol.Range):# HA frontend doesnt recognize range of int really well
         return int
     return val or str
-    """
-    if val in (str, int, bool):
-        return val
-    if isinstance(val, vol.In):
-        return val
-    #fallback
-    return str
-    """
+
+# link ref to documentation (set of different tags among versions)
+SECTION_CONFIG_REF_MAP = {
+    cs.SECTION_SYSTEM: ("OptDetail_System_Processing", "Options_System_Processing"),
+    cs.SECTION_V4L2: ("OptDetail_Video4Linux_Devices", "Options_Video4Linux_Devices"),
+    cs.SECTION_NETCAM: ("OptDetail_Network_Cameras", "Options_Network_Cameras"),
+    cs.SECTION_MMALCAM: ("OptDetail_Raspi_Cameras", "Options_Raspi_Cameras"),
+    cs.SECTION_STREAM: ("OptDetail_Stream", "Options_Stream_Webcontrol"),
+    cs.SECTION_IMAGE: ("OptDetail_Image_Processing", "Options_Image_Processing"),
+    cs.SECTION_MOTION: ("OptDetail_Motion_Detection", "Options_Motion_Detection"),
+    cs.SECTION_SCRIPT: ("OptDetail_Scripts", "Options_Scripts"),
+    cs.SECTION_PICTURE: ("OptDetail_Pictures", "Options_Pictures"),
+    cs.SECTION_MOVIE: ("OptDetail_Movies", "Options_Movies"),
+    cs.SECTION_TIMELAPSE: ("OptDetail_Movies", "Options_Movies"),
+    cs.SECTION_DATABASE: ("OptDetail_Database", "Options_Database"),
+    cs.SECTION_TRACK: ("OptDetail_Tracking", "Options_Tracking")
+}
+
+def _get_config_section_url(version: str, section: str) -> str:
+    if not version:
+        version = "3.4.1" # last known older ver
+    if version.startswith("4.2"):
+        page = "motion_config.html"
+        refver = 0
+    else:
+        page = "motion_guide.html"
+        refver = 1
+    href = SECTION_CONFIG_REF_MAP.get(section)
+    href = href[refver] if href else "Configuration_OptionsTopic"
+    return f"https://motion-project.github.io/{version}/{page}#{href}"
+
+
 
 class MotionFlowHandler(ConfigFlow, domain=DOMAIN):
 
@@ -280,7 +314,7 @@ class OptionsFlowHandler(OptionsFlow):
         cameras = dict(self._config_set)
         if len(cameras):
             cameras.pop(cs.GLOBAL_ID, None)
-        else: # add what we know so far...
+        else: # add what we know so far in case the api is unavailable
             cameras.update({_id: _id for _id in data.get(CONF_ALARM_DISARMHOME_CAMERAS)})
             cameras.update({_id: _id for _id in data.get(CONF_ALARM_DISARMAWAY_CAMERAS)})
             cameras.update({_id: _id for _id in data.get(CONF_ALARM_DISARMNIGHT_CAMERAS)})
@@ -318,38 +352,65 @@ class OptionsFlowHandler(OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            for param, value in user_input.items():
-                if param == CONF_SELECT_CONFIG:
+            for key, value in user_input.items():
+                if key == CONF_SELECT_CONFIG:
                     self._config_section = value
                     continue
                 try:
-                    await self._api.async_config_set(param=param, value=value, id=self._config_id, force=False, persist=False)
+                    await self._api.async_config_set(key=key, value=value, id=self._config_id, force=False, persist=False)
                 except Exception as e:
                     errors["base"] = "cannot_connect"
-                    LOGGER.warning("Error (%s) setting motion parameter '%s'", str(e), param)
+                    LOGGER.warning("Error (%s) setting motion parameter '%s'", str(e), key)
 
             if self._config_section == CONF_OPTION_NONE:
                 return await self.async_step_init()
             # else load another schema/options to edit
 
-        config_section_set = cs.SECTION_SET_MAP[self._config_section]
-        config_exclusion_set = cs.CAMERACONFIG_SET if self._config_id == cs.GLOBAL_ID else cs.GLOBALCONFIG_SET
-        config = self._api.configs.get(self._config_id, {})
-        schema = {
-            vol.Optional(param, description={"suggested_value": config.get(param)})
-            : map_motion_cs_validator(cs.SCHEMA[param])
-            for param in config_section_set if (param in config) and (param not in config_exclusion_set)
-        }
+        config: MappingProxyType[str, cs.Param] = self._api.configs.get(self._config_id, {})
+        config_section_map: MappingProxyType[str, cs.Descriptor] = cs.SECTION_SET_MAP.get(self._config_section)
+        schema = {}
+        if config_section_map:
+            # expose a set of known motion params normalized through config_schema
+            config_exclusion_set = cs.CAMERACONFIG_SET if self._config_id == cs.GLOBAL_ID else cs.GLOBALCONFIG_SET
+            for key, descriptor in config_section_map.items():
+                if (key in config) and (key not in config_exclusion_set):
+                    param = config.get(key)
+                    schema[vol.Optional(key, description={'suggested_value': param})] = \
+                        _map_motion_cs_validator(descriptor if param is None else param.descriptor)
+            """
+            schema = {
+                vol.Optional(key, description={'suggested_value': config.get(key)})
+                : _map_motion_cs_validator(cs.SCHEMA[key])
+                for key in config_section_set if (key in config) and (key not in config_exclusion_set)
+            }
+            """
+        else:
+            # expose any param we didn't normalize
+            # This isnt working fine since the frontend is not able to render an unknown description
+            for key in config.keys():
+                if (key not in cs.SCHEMA.keys()):
+                    param = config.get(key)
+                    schema[vol.Optional(key, description={'suggested_value': param})] = \
+                        str if param is None else _map_motion_cs_validator(param.descriptor)
+            """
+            schema = {
+                vol.Optional(key, description={'suggested_value': config.get(key)})
+                : str
+                for key in config.keys() if (key not in cs.SCHEMA.keys())
+            }
+            """
+
         schema.update({
             vol.Required(CONF_SELECT_CONFIG, default = CONF_OPTION_NONE): vol.In(CONF_SELECT_CONFIG_OPTIONS)
         })
 
         return self.async_show_form(
-            step_id="config",
+            step_id='config',
             data_schema=vol.Schema(schema),
             description_placeholders={
                 'camera_id': self._config_set.get(self._config_id),
-                'config_section': CONF_SELECT_CONFIG_OPTIONS[self._config_section]
+                'config_section': f"<a href='{_get_config_section_url(self._api.version, self._config_section)}'>" \
+                    f"{CONF_SELECT_CONFIG_OPTIONS[self._config_section]}</a>"
                 },
             errors=errors
         )

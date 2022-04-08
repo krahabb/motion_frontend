@@ -8,16 +8,16 @@ PLATFORMS = ["camera", "alarm_control_panel"]
 CONF_PORT_DEFAULT = 8080
 
 # various enum modes for option 'select'
-CONF_OPTION_NONE = "none"
-CONF_OPTION_DEFAULT = "default"
-CONF_OPTION_FORCE = "force"
-CONF_OPTION_AUTO = "auto"
-CONF_OPTION_INTERNAL = "internal"
-CONF_OPTION_EXTERNAL = "external"
-CONF_OPTION_CLOUD = "cloud"
-CONF_OPTION_CONNECTION = "connection"
-CONF_OPTION_ALARM = "alarm"
-
+CONF_OPTION_NONE = 'none'
+CONF_OPTION_DEFAULT = 'default'
+CONF_OPTION_FORCE = 'force'
+CONF_OPTION_AUTO = 'auto'
+CONF_OPTION_INTERNAL = 'internal'
+CONF_OPTION_EXTERNAL = 'external'
+CONF_OPTION_CLOUD = 'cloud'
+CONF_OPTION_CONNECTION = 'connection'
+CONF_OPTION_ALARM = 'alarm'
+CONF_OPTION_UNKNOWN = 'unknown'
 
 CONF_TLS_MODE = "tls_mode"
 CONF_TLS_MODE_OPTIONS = (

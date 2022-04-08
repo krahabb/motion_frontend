@@ -1,8 +1,8 @@
+from __future__ import annotations
 from typing import Any, Mapping
 import voluptuous as vol
-from datetime import timedelta
-import asyncio
 from contextlib import closing
+from functools import partial
 import aiohttp
 import async_timeout
 import requests
@@ -17,20 +17,10 @@ from homeassistant.helpers.aiohttp_client import (
     async_get_clientsession,
 )
 from homeassistant.components.camera import (
-    SUPPORT_STREAM,
+    Camera,
+    SUPPORT_STREAM, SUPPORT_ON_OFF,
     STATE_IDLE, STATE_RECORDING, STATE_STREAMING
 )
-from homeassistant.components.camera import (
-    PLATFORM_SCHEMA, Camera
-)
-from homeassistant.components.mjpeg.camera import (
-    #MjpegCamera,
-    #CONF_MJPEG_URL,CONF_STILL_IMAGE_URL, CONF_VERIFY_SSL,
-    #CONF_AUTHENTICATION, CONF_USERNAME, CONF_PASSWORD,
-    #HTTP_BASIC_AUTHENTICATION, HTTP_DIGEST_AUTHENTICATION,
-    filter_urllib3_logging,
-)
-
 from homeassistant.const import (
     ATTR_ATTRIBUTION, CONF_NAME,
     STATE_PAUSED, STATE_PROBLEM, STATE_ALARM_TRIGGERED
@@ -89,8 +79,6 @@ CAMERA_SERVICES = (
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
 
-    filter_urllib3_logging() # agent_dvr integration does this...
-
     api = hass.data[DOMAIN][config_entry.entry_id]
 
     async_add_entities(api.cameras.values())
@@ -128,10 +116,9 @@ class MotionFrontendCamera(Camera, MotionCamera):
         self._recording = False
         self._triggered = False
         self._state = STATE_PROBLEM if not self.connected else STATE_PAUSED if self.paused else STATE_IDLE
-        self._extra_attr = {}
+        self._attr_extra_state_attributes = {}
         self._camera_image = None # cached copy
         self._available = True
-
         Camera.__init__(self)
 
 
@@ -181,13 +168,13 @@ class MotionFrontendCamera(Camera, MotionCamera):
 
 
     @property
-    def is_recording(self):
-        return self._recording
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        return self._attr_extra_state_attributes
 
 
     @property
-    def extra_state_attributes(self) -> Mapping[str, Any]:
-        return self._extra_attr
+    def is_recording(self):
+        return self._recording
 
 
     @property
@@ -204,7 +191,9 @@ class MotionFrontendCamera(Camera, MotionCamera):
 
 
     # override
-    async def async_camera_image(self):
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
         """Return a still image response from the camera."""
         if self.connected:
             # only pull the stream/image when the remote is connected
@@ -215,7 +204,9 @@ class MotionFrontendCamera(Camera, MotionCamera):
                 image_url = self.image_url
                 stream_auth_method = self.config.get(cs.STREAM_AUTH_METHOD)
                 if (image_url is None) or (stream_auth_method == cs.AUTH_MODE_DIGEST):
-                    self._camera_image = await self.hass.async_add_executor_job(self.camera_image)
+                    self._camera_image = await self.hass.async_add_executor_job(
+                        partial(self.camera_image, width=width, height=height)
+                    )
                     if not self._available:
                         self._updatestate()
                     return self._camera_image
@@ -244,7 +235,9 @@ class MotionFrontendCamera(Camera, MotionCamera):
         return self._camera_image
 
 
-    def camera_image(self):
+    def camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
         """
             Return a still image response from the camera.
             This is called whenever auth is like DIGEST or
@@ -309,10 +302,10 @@ class MotionFrontendCamera(Camera, MotionCamera):
     def handle_event(self, data: dict) -> None:
         event_id = data.get(EXTRA_ATTR_EVENT_ID)
         if event_id:
-            self._extra_attr[EXTRA_ATTR_EVENT_ID] = event_id
+            self._attr_extra_state_attributes[EXTRA_ATTR_EVENT_ID] = event_id
         filename = data.get(EXTRA_ATTR_FILENAME)
         if filename:
-            self._extra_attr[EXTRA_ATTR_FILENAME] = filename
+            self._attr_extra_state_attributes[EXTRA_ATTR_FILENAME] = filename
 
         event = data.get("event")
         if event == ON_MOVIE_START:
@@ -342,19 +335,19 @@ class MotionFrontendCamera(Camera, MotionCamera):
     def _settriggered(self, triggered: bool):
         if self._triggered != triggered:
             self._triggered = triggered
-            self._extra_attr[EXTRA_ATTR_TRIGGERED] = triggered
+            self._attr_extra_state_attributes[EXTRA_ATTR_TRIGGERED] = triggered
             self._updatestate()
 
 
     #override MotionCamera
     def on_connected_changed(self):
-        self._extra_attr[EXTRA_ATTR_CONNECTED] = self.connected
+        self._attr_extra_state_attributes[EXTRA_ATTR_CONNECTED] = self.connected
         self._updatestate()
 
 
     #override MotionCamera
     def on_paused_changed(self):
-        self._extra_attr[EXTRA_ATTR_PAUSED] = self.paused
+        self._attr_extra_state_attributes[EXTRA_ATTR_PAUSED] = self.paused
         self._updatestate()
 
 

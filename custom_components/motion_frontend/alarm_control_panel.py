@@ -1,5 +1,4 @@
 """Support for Motion daemon DVR Alarm Control Panels."""
-from typing import Any, Mapping
 from homeassistant.components.alarm_control_panel import (
     AlarmControlPanelEntity,
     FORMAT_TEXT, FORMAT_NUMBER
@@ -52,7 +51,7 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
         self._unique_id = f"{api.unique_id}_CP"
         self._name = f"{api.name} Alarm Panel"
         self._state = STATE_ALARM_DISARMED
-        self._extra_attr = {}
+        self._attr_extra_state_attributes = {}
         self._armmode = STATE_ALARM_DISARMED
         data = api.config_data.get(CONF_OPTION_ALARM, {})
         self._pin: str = data.get(CONF_PIN)
@@ -144,8 +143,8 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
 
 
     @property
-    def extra_state_attributes(self) -> Mapping[str, Any]:
-        return self._extra_attr
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
 
 
     async def async_update(self):
@@ -227,12 +226,12 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
             return
 
         if camera.is_triggered:
-            self._extra_attr[EXTRA_ATTR_LAST_TRIGGERED] = camera.entity_id
+            self._attr_extra_state_attributes[EXTRA_ATTR_LAST_TRIGGERED] = camera.entity_id
             self._set_state(STATE_ALARM_TRIGGERED)
             return
 
         if camera.state == STATE_PROBLEM:
-            self._extra_attr[EXTRA_ATTR_LAST_PROBLEM] = camera.entity_id
+            self._attr_extra_state_attributes[EXTRA_ATTR_LAST_PROBLEM] = camera.entity_id
             if self._state != STATE_ALARM_TRIGGERED:
                 self._set_state(STATE_PROBLEM) # report camera 'PROBLEM' to this alarm
                 return

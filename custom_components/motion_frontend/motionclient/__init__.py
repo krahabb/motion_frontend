@@ -1,9 +1,8 @@
 """An Http API Client to interact with motion server"""
 import logging
-from typing import List, Optional, Dict, Any, Callable, Union
-from urllib.parse import urljoin
+from types import MappingProxyType
+from typing import List, MappingView, Optional, Dict, Any, Callable, Union
 from enum import Enum
-from html.parser import HTMLParser
 
 import re
 import aiohttp
@@ -15,15 +14,16 @@ import async_timeout
 
 from datetime import datetime
 
-from . import config_schema
-cs = config_schema
+from . import config_schema as cs
+#cs = config_schema
 
 
 class MotionHttpClientError(Exception):
-    def __init__(self, status: Optional[int], message: Optional[str]):  # pylint: disable=unsubscriptable-object
-        self.status = status
+    def __init__(self, client: 'MotionHttpClient', message: Optional[str], path: Optional[str], status: Optional[int]):  # pylint: disable=unsubscriptable-object
         self.message = message
-        self.args = (status, message)
+        self.status = status
+        self.client = client
+        self.args = (message, status, client.server_url, path)
 
 
 class MotionHttpClientConnectionError(MotionHttpClientError):
@@ -79,7 +79,7 @@ class MotionHttpClient:
         self._feature_advancedstream = False # if True (from ver 4.2 on) allows more uri options and multiple streams on the same port
         self._feature_tls = False
         self._feature_globalactions = False # if True (from ver 4.2 on) we can globally start/pause detection by issuing on threadid = 0
-        self._configs : Dict[str, Dict[str, Any]] = {}
+        self._configs : Dict[str, Dict[str, config_schema.Param]] = {}
         self._cameras : Dict[str, 'MotionCamera'] = {}
         self._config_is_dirty = False # set when we modify a motion config param (async_config_set)
         self._config_need_restart = set()
@@ -161,17 +161,17 @@ class MotionHttpClient:
 
 
     @property
-    def configs(self) -> Dict[str, Any]:
+    def configs(self) -> MappingProxyType[str, MappingProxyType[str, config_schema.Param]]:
         return self._configs
 
 
     @property
-    def config(self) -> Dict[str, Any]:
+    def config(self) -> MappingProxyType[str, config_schema.Param]:
         return self._configs.get(cs.GLOBAL_ID)
 
 
     @property
-    def cameras(self) -> Dict[str, 'MotionCamera']:
+    def cameras(self) -> MappingProxyType[str, 'MotionCamera']:
         return self._cameras
 
 
@@ -268,7 +268,7 @@ class MotionHttpClient:
                     await self.async_action_restart(_id)
 
 
-    async def async_config_list(self, id) -> Dict[str, Any]:
+    async def async_config_list(self, id) -> Dict[str, config_schema.Param]:
         config = {}
         content, _ = await self.async_request(f"/{id}/config/list")
         if content:
@@ -291,24 +291,25 @@ class MotionHttpClient:
         return config
 
 
-    async def async_config_set(self, param: str, value: Any, force: bool = False, persist: bool = False, id: str = cs.GLOBAL_ID):
+    async def async_config_set(self, key: str, value: Any, force: bool = False, persist: bool = False, id: str = cs.GLOBAL_ID):
 
         config = self._configs.get(id)
-        if (force is False) and config and (config.get(param) == value):
+        if (force is False) and config and (config.get(key) == value):
             return
 
-        await self.async_request(f"/{id}/config/set?{param}={value}")
-        newvalue = cs.build_value(param, value)
+        newvalue = cs.build_value(key, value)
+        await self.async_request(f"/{id}/config/set?{key}={newvalue.__str__()}")
+
         if id == cs.GLOBAL_ID: # motion will set all threads with this same value when setting global conf
             for config in self._configs.values():
-                if param in config: # some params are only relevant to global conf
-                    config[param] = newvalue
+                if key in config: # some params are only relevant to global conf
+                    config[key] = newvalue
         else:
             if config:
-                config[param] = newvalue
+                config[key] = newvalue
 
         self._config_is_dirty = True
-        if param in cs.RESTARTCONFIG_SET:
+        if key in cs.RESTARTCONFIG_SET:
             self._config_need_restart.add(id)
 
         if persist:
@@ -351,16 +352,13 @@ class MotionHttpClient:
                 try:
                     self.getcamera(match.group(1))._setconnected(match.group(2) == "OK")
                 except Exception as exception:
-                    self._logger.warning(str(exception))
-        except Exception as exception:
-            self._logger.warning(str(exception))
+                    self._logger.warning("exception (%s) in async_detection_status", str(exception))
 
-        try:
-            content: str = ""
             if (id != cs.GLOBAL_ID) or self._feature_globalactions:
                 #recover all cameras in 1 pass
                 content, _ = await self.async_request(f"/{id}/detection/status")
             else:
+                content: str = ""
                 for _id in self.cameras.keys():
                     addcontent, _ = await self.async_request(f"/{_id}/detection/status")
                     content += addcontent
@@ -368,9 +366,9 @@ class MotionHttpClient:
                 try:
                     self.getcamera(match.group(1))._setpaused(match.group(2) == "PAUSE")
                 except Exception as exception:
-                    self._logger.warning(str(exception))
+                    self._logger.warning("exception (%s) in async_detection_status", str(exception))
         except Exception as exception:
-            self._logger.warning(str(exception))
+            self._logger.info("exception (%s) in async_detection_status", str(exception))
 
 
     async def async_detection_start(self, id: str = cs.GLOBAL_ID):
@@ -422,12 +420,12 @@ class MotionHttpClient:
     async def async_request(self, api_url, timeout=DEFAULT_TIMEOUT) -> str:
         if self._conFailed:
             if (datetime.now()-self.disconnected).total_seconds() < self.reconnect_interval:
-                return None
+                raise MotionHttpClientConnectionError(self, "Connection failed. Retry in few seconds..", api_url, -1)
 
-        def _raise(exception, status, message):
+        def _raise(exception, message, status = -1):
             self.disconnected = datetime.now()
             self._conFailed = True
-            raise MotionHttpClientConnectionError(status, message) from exception
+            raise MotionHttpClientConnectionError(self, message, api_url, status) from exception
 
         looptry = 0
         while True:
@@ -443,7 +441,7 @@ class MotionHttpClient:
                     )
                     response.raise_for_status()
             except asyncio.TimeoutError as exception:
-                _raise(exception, -1, "Timeout occurred while connecting to motion http interface")
+                _raise(exception, "Timeout occurred while connecting to motion http interface")
             except (
                 aiohttp.ClientError,
                 aiohttp.ClientResponseError,
@@ -463,12 +461,12 @@ class MotionHttpClient:
                         self._server_url = MotionHttpClient.generate_url(self._host, self._port, "http")
                     looptry = 1
                     continue # dirty flow behaviour: restart the request loop
-                _raise(exception, status, message)
+                _raise(exception, message, status)
             except (
                 Exception,
                 socket.gaierror,
             ) as exception:
-                _raise(exception, -1, "Error occurred while communicating with motion server")
+                _raise(exception, "Error occurred while communicating with motion server")
 
             text = await response.text()
             self._conFailed = False
@@ -585,8 +583,8 @@ class MotionCamera:
         return stream_authentication.split(":")
 
 
-    async def async_config_set(self, param: str, value: Any, force: bool = False, persist: bool = False):
-        await self._client.async_config_set(param=param, value=value, force=force, persist=persist, id=self._id)
+    async def async_config_set(self, key: str, value: Any, force: bool = False, persist: bool = False):
+        await self._client.async_config_set(key=key, value=value, force=force, persist=persist, id=self._id)
 
 
     async def async_makemovie(self):
