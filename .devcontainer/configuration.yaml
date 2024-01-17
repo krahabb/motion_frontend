@@ -3,7 +3,7 @@ default_config:
 stream:
 
 logger:
-  default: info
+  default: warning
   logs:
     custom_components.motion_frontend: debug
 
