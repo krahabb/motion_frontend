@@ -22,10 +22,6 @@ from __future__ import annotations
 import mimetypes
 from pathlib import Path
 
-#from aiohttp import web
-#from homeassistant.components.http import HomeAssistantView
-
-
 from homeassistant.components.media_player.const import (
     MEDIA_CLASS_DIRECTORY,
     MEDIA_CLASS_VIDEO,
@@ -33,8 +29,8 @@ from homeassistant.components.media_player.const import (
 )
 from homeassistant.components.media_player.errors import BrowseError
 from homeassistant.components.media_source.const import (
+    MEDIA_CLASS_MAP,
     MEDIA_MIME_TYPES,
-    MEDIA_CLASS_MAP
 )
 from homeassistant.components.media_source.error import MediaSourceError, Unresolvable
 from homeassistant.components.media_source.models import (
@@ -46,9 +42,13 @@ from homeassistant.components.media_source.models import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import raise_if_invalid_path
 
-from .const import (
-    DOMAIN
-)
+from .const import DOMAIN
+
+#from aiohttp import web
+#from homeassistant.components.http import HomeAssistantView
+
+
+
 
 async def async_get_media_source(hass: HomeAssistant):
     """Set up Netatmo media source."""

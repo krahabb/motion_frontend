@@ -1,96 +1,83 @@
 from __future__ import annotations
-from typing import Any, Mapping
-import voluptuous as vol
+
+import asyncio
 from contextlib import closing
 from functools import partial
-import aiohttp
-import async_timeout
-import requests
-from requests.auth import HTTPBasicAuth, HTTPDigestAuth
+from typing import Any, Mapping
+import typing
 
+import aiohttp
+
+from homeassistant.components import camera
+from homeassistant import const as hac
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.typing import StateType
-#from homeassistant.helpers import config_validation as cv
+
+# from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import (
     async_aiohttp_proxy_web,
     async_get_clientsession,
 )
-from homeassistant.components.camera import (
-    Camera,
-    SUPPORT_STREAM, SUPPORT_ON_OFF,
-    STATE_IDLE, STATE_RECORDING, STATE_STREAMING
-)
-from homeassistant.const import (
-    ATTR_ATTRIBUTION, CONF_NAME,
-    STATE_PAUSED, STATE_PROBLEM, STATE_ALARM_TRIGGERED
-)
+from homeassistant.helpers.typing import StateType
+import requests
+from requests.auth import HTTPBasicAuth, HTTPDigestAuth
+import voluptuous as vol
 
-"""from homeassistant.const import (
-    CONF_AUTHENTICATION,
-    CONF_NAME,
-    CONF_PASSWORD,
-    CONF_USERNAME,
-    CONF_VERIFY_SSL,
-    HTTP_BASIC_AUTHENTICATION,
-    HTTP_DIGEST_AUTHENTICATION,
-)"""
-
-
-from .motionclient import (
-    TlsMode,
-    MotionHttpClient, MotionHttpClientError,
-    MotionCamera,
-    config_schema as cs
-)
-
-from .helpers import LOGGER
 from .const import (
     DOMAIN,
-    EXTRA_ATTR_EVENT_ID, EXTRA_ATTR_FILENAME,
-    EXTRA_ATTR_PAUSED, EXTRA_ATTR_TRIGGERED, EXTRA_ATTR_CONNECTED,
-    ON_CAMERA_FOUND, ON_CAMERA_LOST,
-    ON_EVENT_START, ON_EVENT_END,
-    ON_AREA_DETECTED, ON_MOTION_DETECTED,
-    ON_MOVIE_START, ON_MOVIE_END, ON_PICTURE_SAVE
+    EXTRA_ATTR_CONNECTED,
+    EXTRA_ATTR_EVENT_ID,
+    EXTRA_ATTR_FILENAME,
+    EXTRA_ATTR_PAUSED,
+    EXTRA_ATTR_TRIGGERED,
+    ON_AREA_DETECTED,
+    ON_CAMERA_FOUND,
+    ON_CAMERA_LOST,
+    ON_EVENT_END,
+    ON_EVENT_START,
+    ON_MOTION_DETECTED,
+    ON_MOVIE_END,
+    ON_MOVIE_START,
+    ON_PICTURE_SAVE,
+)
+from .helpers import LOGGER
+from .motionclient import (
+    MotionCamera,
+    TlsMode,
+    config_schema as cs,
 )
 
+if typing.TYPE_CHECKING:
+    from . import MotionFrontendApi
 
 SERVICE_KEY_PARAM = "param"
 SERVICE_KEY_VALUE = "value"
 CAMERA_SERVICES = (
-    ("config_set", {
-        vol.Required(SERVICE_KEY_PARAM): str,
-        vol.Required(SERVICE_KEY_VALUE): str
-    },
-    "async_config_set"
+    (
+        "config_set",
+        vol.Schema({
+            vol.Required(SERVICE_KEY_PARAM): str,
+            vol.Required(SERVICE_KEY_VALUE): str,
+        }),
+        "async_config_set",
     ),
-    ("makemovie", {
-    },
-    "async_makemovie"
-    ),
-    ("snapshot", {
-    },
-    "async_snapshot"
-    ),
+    ("makemovie", vol.Schema({}), "async_makemovie"),
+    ("snapshot", vol.Schema({}), "async_snapshot"),
 )
 
 
-
 async def async_setup_entry(hass, config_entry, async_add_entities):
-
     api = hass.data[DOMAIN][config_entry.entry_id]
 
     async_add_entities(api.cameras.values())
 
-    platform = entity_platform.current_platform.get()
-    for service, schema, method in CAMERA_SERVICES:
-        platform.async_register_entity_service(service, schema, method)
+    if platform := entity_platform.current_platform.get():
+        for service, schema, method in CAMERA_SERVICES:
+            platform.async_register_entity_service(service, schema, method)
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry):
-
-    if len(hass.data[DOMAIN]) == 1: # last config_entry for DOMAIN
+    if len(hass.data[DOMAIN]) == 1:  # last config_entry for DOMAIN
         for service_entry in CAMERA_SERVICES:
             hass.services.async_remove(DOMAIN, service_entry[0])
 
@@ -107,88 +94,70 @@ def _extract_image_from_mjpeg(stream):
                 return data[jpg_start : jpg_end + 2]
 
 
+class MotionFrontendCamera(camera.Camera, MotionCamera):
+    client: MotionFrontendApi
 
-class MotionFrontendCamera(Camera, MotionCamera):
 
-    def __init__(self, client: MotionHttpClient, id: str):
+    def __init__(self, client: MotionFrontendApi, id: str):
         MotionCamera.__init__(self, client, id)
         self._unique_id = f"{client.unique_id}_{self.camera_id}"
         self._recording = False
         self._triggered = False
-        self._state = STATE_PROBLEM if not self.connected else STATE_PAUSED if self.paused else STATE_IDLE
+        self._state = (
+            hac.STATE_PROBLEM
+            if not self.connected
+            else hac.STATE_PAUSED
+            if self.paused
+            else camera.STATE_IDLE
+        )
         self._attr_extra_state_attributes = {}
-        self._camera_image = None # cached copy
+        self._camera_image = None  # cached copy
         self._available = True
-        Camera.__init__(self)
-
+        camera.Camera.__init__(self)
 
     @property
     def unique_id(self) -> str:
         return self._unique_id
 
-
     @property
     def device_info(self):
         return self.client.device_info
-
-
-    @property
-    def supported_features(self) -> int:
-        return 0
-
 
     @property
     def assumed_state(self) -> bool:
         return False
 
-
     @property
-    def should_poll(self) -> bool:
+    def should_poll(self):
         return False
-
 
     @property
     def icon(self):
         return "mdi:camcorder"
 
-
     @property
-    def name(self) -> str:
+    def name(self):
         return self.config.get(cs.CAMERA_NAME, self.camera_id)
 
-
     @property
-    def available(self) -> bool:
+    def available(self):
         return self.client.is_available and self._available
-
 
     @property
     def state(self) -> StateType:
         return self._state
 
-
     @property
     def extra_state_attributes(self) -> Mapping[str, Any]:
         return self._attr_extra_state_attributes
-
 
     @property
     def is_recording(self):
         return self._recording
 
-
     @property
     def motion_detection_enabled(self):
         return not self.paused
-
-
-    async def async_added_to_hass(self) -> None:
-        return
-
-
-    async def async_will_remove_from_hass(self) -> None:
-        return
-
 
     # override
     async def async_camera_image(
@@ -212,16 +181,17 @@ class MotionFrontendCamera(Camera, MotionCamera):
                     return self._camera_image
 
                 websession = async_get_clientsession(
-                    self.hass,
-                    verify_ssl=(self.client.tlsmode == TlsMode.STRICT)
-                    )
+                    self.hass, verify_ssl=(self.client.tlsmode == TlsMode.STRICT)
+                )
                 if stream_auth_method == cs.AUTH_MODE_BASIC:
                     stream_authentication = self.stream_authentication
-                    auth = aiohttp.BasicAuth(stream_authentication[0], stream_authentication[-1])
+                    auth = aiohttp.BasicAuth(
+                        stream_authentication[0], stream_authentication[-1]
+                    )
                 else:
                     auth = None
 
-                with async_timeout.timeout(10):
+                async with asyncio.timeout(10):
                     response = await websession.get(image_url, auth=auth)
                     self._camera_image = await response.read()
                     if not self._available:
@@ -229,41 +199,45 @@ class MotionFrontendCamera(Camera, MotionCamera):
                     return self._camera_image
 
             except Exception as exception:
-                LOGGER.warning("Error (%s) fetching image from %s", str(exception), self.name)
+                LOGGER.warning(
+                    "Error (%s) fetching image from %s", str(exception), self.name
+                )
                 self._set_state(None)
 
         return self._camera_image
-
 
     def camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """
-            Return a still image response from the camera.
-            This is called whenever auth is like DIGEST or
-            we don't have a real jpeg endpoint and we need
-            to parse the MJPEG stream
+        Return a still image response from the camera.
+        This is called whenever auth is like DIGEST or
+        we don't have a real jpeg endpoint and we need
+        to parse the MJPEG stream
         """
         stream_auth_method = self.config.get(cs.STREAM_AUTH_METHOD)
         auth = None
         if stream_auth_method:
             stream_authentication = self.stream_authentication
             if stream_auth_method == cs.AUTH_MODE_BASIC:
-                auth = HTTPBasicAuth(stream_authentication[0], stream_authentication[-1])
+                auth = HTTPBasicAuth(
+                    stream_authentication[0], stream_authentication[-1]
+                )
             elif stream_auth_method == cs.AUTH_MODE_DIGEST:
-                auth = HTTPDigestAuth(stream_authentication[0], stream_authentication[-1])
+                auth = HTTPDigestAuth(
+                    stream_authentication[0], stream_authentication[-1]
+                )
 
         req = requests.get(
-                self.stream_url,
-                auth=auth,
-                stream=True,
-                timeout=10,
-                verify=(self.client.tlsmode == TlsMode.STRICT)
-            )
+            self.stream_url,
+            auth=auth,
+            stream=True,
+            timeout=10,
+            verify=(self.client.tlsmode == TlsMode.STRICT),
+        )
 
         with closing(req) as response:
             return _extract_image_from_mjpeg(response.iter_content(102400))
-
 
     async def handle_async_mjpeg_stream(self, request):
         """Generate an HTTP MJPEG stream from the camera."""
@@ -274,10 +248,14 @@ class MotionFrontendCamera(Camera, MotionCamera):
             return await super().handle_async_mjpeg_stream(request)
         elif stream_auth_method == cs.AUTH_MODE_BASIC:
             stream_authentication = self.stream_authentication
-            auth = aiohttp.BasicAuth(stream_authentication[0], stream_authentication[-1])
+            auth = aiohttp.BasicAuth(
+                stream_authentication[0], stream_authentication[-1]
+            )
 
         # connect to stream
-        websession = async_get_clientsession(self.hass, verify_ssl=(self.client.tlsmode == TlsMode.STRICT))
+        websession = async_get_clientsession(
+            self.hass, verify_ssl=(self.client.tlsmode == TlsMode.STRICT)
+        )
         stream_coro = websession.get(self.stream_url, auth=auth)
         return await async_aiohttp_proxy_web(self.hass, request, stream_coro)
 
@@ -293,11 +271,9 @@ class MotionFrontendCamera(Camera, MotionCamera):
     async def async_enable_motion_detection(self):
         await self.client.async_detection_start(self._id)
 
-
     # inherited from camera platform service call
     async def async_disable_motion_detection(self):
         await self.client.async_detection_pause(self._id)
-
 
     def handle_event(self, data: dict) -> None:
         event_id = data.get(EXTRA_ATTR_EVENT_ID)
@@ -322,34 +298,30 @@ class MotionFrontendCamera(Camera, MotionCamera):
             self._setconnected(False)
         return
 
-
     def _setrecording(self, recording: bool):
         if self._recording != recording:
             self._recording = recording
             self._updatestate()
 
-
     @property
     def is_triggered(self):
         return self._triggered
+
     def _settriggered(self, triggered: bool):
         if self._triggered != triggered:
             self._triggered = triggered
             self._attr_extra_state_attributes[EXTRA_ATTR_TRIGGERED] = triggered
             self._updatestate()
 
-
-    #override MotionCamera
+    # override MotionCamera
     def on_connected_changed(self):
         self._attr_extra_state_attributes[EXTRA_ATTR_CONNECTED] = self.connected
         self._updatestate()
 
-
-    #override MotionCamera
+    # override MotionCamera
     def on_paused_changed(self):
         self._attr_extra_state_attributes[EXTRA_ATTR_PAUSED] = self.paused
         self._updatestate()
-
 
     def _updatestate(self):
         """
@@ -358,21 +330,20 @@ class MotionFrontendCamera(Camera, MotionCamera):
         """
         if self.connected:
             if self._recording:
-                self._set_state(STATE_RECORDING)
+                self._set_state(camera.STATE_RECORDING)
             elif self._triggered:
-                self._set_state(STATE_ALARM_TRIGGERED)
+                self._set_state(hac.STATE_ALARM_TRIGGERED)
             elif self.paused:
-                self._set_state(STATE_PAUSED)
+                self._set_state(hac.STATE_PAUSED)
             else:
-                self._set_state(STATE_IDLE)
+                self._set_state(camera.STATE_IDLE)
         else:
-            self._set_state(STATE_PROBLEM)
+            self._set_state(hac.STATE_PROBLEM)
         # we'll notify our api here since HA state could have not changed
         # but some inner property has
         self.client.notify_state_changed(self)
 
-
-    def _set_state(self, state: str) -> None:
+    def _set_state(self, state: str | None) -> None:
         # we'll get here since an underlying state changed
         # we always save to HA since even tho _state has not changed
         # something might have in attributes
