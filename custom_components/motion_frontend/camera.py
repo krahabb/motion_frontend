@@ -3,13 +3,12 @@ from __future__ import annotations
 import asyncio
 from contextlib import closing
 from functools import partial
-from typing import Any, Mapping
 import typing
+from typing import Any, Mapping
 
 import aiohttp
-
-from homeassistant.components import camera
 from homeassistant import const as hac
+from homeassistant.components import camera
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_platform
 
@@ -41,11 +40,7 @@ from .const import (
     ON_PICTURE_SAVE,
 )
 from .helpers import LOGGER
-from .motionclient import (
-    MotionCamera,
-    TlsMode,
-    config_schema as cs,
-)
+from .motionclient import MotionCamera, TlsMode, config_schema as cs
 
 if typing.TYPE_CHECKING:
     from . import MotionFrontendApi

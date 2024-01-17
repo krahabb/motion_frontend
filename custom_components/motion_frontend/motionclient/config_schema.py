@@ -2,9 +2,10 @@
 Motion daemon config parameters definitions
 """
 from __future__ import annotations
+
 from collections import ChainMap
-from typing import Any, Container
 import typing
+from typing import Any, Container
 
 import voluptuous as vol
 

@@ -1,5 +1,6 @@
 """An Http API Client to interact with motion server"""
 from __future__ import annotations
+
 import asyncio
 from datetime import datetime
 from enum import Enum
@@ -10,7 +11,6 @@ from types import MappingProxyType
 from typing import Any, Callable
 
 import aiohttp
-
 from yarl import URL
 
 from . import config_schema as cs

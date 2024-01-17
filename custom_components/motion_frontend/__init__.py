@@ -1,25 +1,16 @@
 """The Motion Frontend integration."""
 from __future__ import annotations
+
 import asyncio
-from logging import INFO, WARNING
 import os
 from pathlib import Path
 import types
 import typing
 
 import aiohttp
-
-from homeassistant.components import mqtt
-from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
-from homeassistant.const import (
-    ATTR_AREA_ID,
-    CONF_HOST,
-    CONF_PASSWORD,
-    CONF_PORT,
-    CONF_USERNAME,
-)
-from homeassistant.core import HomeAssistant, callback, CALLBACK_TYPE
-from homeassistant.helpers import device_registry
+from homeassistant.config_entries import ConfigEntryNotReady
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import raise_if_invalid_path
 
@@ -42,10 +33,9 @@ from .const import (
     MAP_TLS_MODE,
     PLATFORMS,
 )
-from .helpers import LOGGER, LOGGER_trap
+from .helpers import LOGGER
 from .motionclient import (
     MotionHttpClient,
-    MotionHttpClientConnectionError,
     MotionHttpClientError,
     TlsMode,
     config_schema as cs,
@@ -53,11 +43,10 @@ from .motionclient import (
 
 if typing.TYPE_CHECKING:
     import aiohttp.web
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+
     from .alarm_control_panel import MotionFrontendAlarmControlPanel
-
-
-async def async_setup(hass: HomeAssistant, config: dict):
-    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
@@ -208,7 +197,6 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
 
 class MotionFrontendApi(MotionHttpClient):
-
     cameras: dict[str, MotionFrontendCamera]
 
     def __init__(
@@ -253,7 +241,9 @@ class MotionFrontendApi(MotionHttpClient):
 
             LOGGER.debug("Received webhook - (%s)", data)
 
-            camera = typing.cast(MotionFrontendCamera, self.getcamera(str(data["camera_id"])))
+            camera = typing.cast(
+                MotionFrontendCamera, self.getcamera(str(data["camera_id"]))
+            )
             if self.media_dir_id:
                 try:  # fix the path as a media_source compatible url
                     filename = data.get(EXTRA_ATTR_FILENAME)
