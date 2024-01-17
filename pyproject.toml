@@ -1,0 +1,55 @@
+################################################################################
+[tool.black]
+################################################################################
+target-version = ["py311"]
+extend-exclude = "/generated/"
+
+################################################################################
+[tool.isort]
+################################################################################
+# https://github.com/PyCQA/isort/wiki/isort-Settings
+profile = "black"
+# will group `import x` and `from x import` of the same module.
+force_sort_within_sections = true
+known_first_party = [
+    "custom_components.motion_frontend",
+    "tests",
+]
+forced_separate = [
+    "tests",
+]
+combine_as_imports = true
+
+################################################################################
+[tool.pylint."MESSAGES CONTROL"]
+################################################################################
+disable = [
+    "broad-except",
+    "broad-exception-raised",
+    "global-statement",
+    "import-outside-toplevel",
+    "invalid-name",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "protected-access",
+]
+
+################################################################################
+[tool.pytest.ini_options]
+################################################################################
+python_files = [
+    "test_*.py",
+]
+python_functions = [
+    "test_*",
+]
+testpaths = [
+    "tests",
+]
+norecursedirs = [
+    ".git",
+    "testing_config",
+]
+log_format = "%(asctime)s.%(msecs)03d %(levelname)-8s %(threadName)s %(name)s:%(filename)s:%(lineno)s %(message)s"
+log_date_format = "%Y-%m-%d %H:%M:%S"
+asyncio_mode = "auto"
