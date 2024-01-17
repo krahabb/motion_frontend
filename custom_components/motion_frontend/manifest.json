@@ -1,17 +1,23 @@
 {
-    "domain": "motion_frontend",
-    "name": "Motion Frontend",
-    "config_flow": true,
-    "iot_class": "local_push",
-    "documentation": "https://github.com/krahabb/motion_frontend",
-    "issue_tracker": "https://github.com/krahabb/motion_frontend/issues",
-    "requirements": [],
-    "ssdp": [],
-    "zeroconf": [],
-    "homekit": {},
-    "mqtt": [],
-    "dependencies": [],
-    "after_dependencies": ["webhook","camera","media_source"],
-    "codeowners": ["@krahabb"],
-    "version": "0.0.3"
-  }
+  "domain": "motion_frontend",
+  "name": "Motion Frontend",
+  "after_dependencies": [
+    "webhook",
+    "camera",
+    "media_source"
+  ],
+  "codeowners": [
+    "@krahabb"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/krahabb/motion_frontend",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/krahabb/motion_frontend/issues",
+  "loggers": [
+    "custom_components.motion_frontend"
+  ],
+  "requirements": [],
+  "version": "2024.1.0"
+}

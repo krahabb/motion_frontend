@@ -1,17 +1,16 @@
 name: Push actions
 
-on:
-  push:
-    branches:
-      - master
-      - dev
+on: push
+
+env:
+  DEFAULT_PYTHON: "3.11"
 
 jobs:
   validate:
     runs-on: "ubuntu-latest"
     name: Validate
     steps:
-        - uses: "actions/checkout@v2"
+        - uses: "actions/checkout@v3"
 
         - name: HACS validation
           uses: "hacs/action@main"
@@ -26,10 +25,10 @@ jobs:
     runs-on: "ubuntu-latest"
     name: Check style formatting
     steps:
-        - uses: "actions/checkout@v2"
-        - uses: "actions/setup-python@v1"
+        - uses: "actions/checkout@v3"
+        - uses: "actions/setup-python@v4"
           with:
-            python-version: "3.x"
+            python-version: ${{ env.DEFAULT_PYTHON }}
         - run: python3 -m pip install black
         - run: black .
 
@@ -38,21 +37,21 @@ jobs:
     name: Run tests
     steps:
       - name: Check out code from GitHub
-        uses: "actions/checkout@v2"
+        uses: "actions/checkout@v3"
       - name: Setup Python
-        uses: "actions/setup-python@v1"
+        uses: "actions/setup-python@v4"
         with:
-          python-version: "3.8"
+          python-version: ${{ env.DEFAULT_PYTHON }}
       - name: Install requirements
         run: python3 -m pip install -r requirements_test.txt
       - name: Run tests
         run: |
           pytest \
             -qq \
-            --timeout=9 \
+            --timeout=60 \
             --durations=10 \
             -n auto \
-            --cov custom_components.integration_blueprint \
+            --cov custom_components.motion_frontend \
             -o console_output_style=count \
             -p no:sugar \
             tests

@@ -5,4 +5,8 @@ venv
 .coverage
 .ropeproject
 *.secret
+*.secret.json
 *.user
+traces
+.DS_Store
+config

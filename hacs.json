@@ -1,10 +1,5 @@
 {
     "name": "Motion Frontend",
-    "domains": [
-        "camera", "alarm_control_panel"
-    ],
-    "iot_class": "local_push",
-    "homeassistant": "2021.0.0",
-    "hacs": "1.6.0",
+    "homeassistant": "2024.1.0",
     "render_readme": true
 }

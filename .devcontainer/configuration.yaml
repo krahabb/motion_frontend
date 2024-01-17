@@ -1,15 +1,9 @@
 default_config:
 
-homeassistant:
-  #external_url: http://192.168.1.201:9124
-  #internal_url: http://192.168.1.64:8123
-
-
 stream:
 
-
 logger:
-  default: info
+  default: warning
   logs:
     custom_components.motion_frontend: debug
 
