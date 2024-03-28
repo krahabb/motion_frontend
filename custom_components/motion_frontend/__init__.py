@@ -1,4 +1,5 @@
 """The Motion Frontend integration."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,10 +9,12 @@ import types
 import typing
 
 import aiohttp
+from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntryNotReady
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.network import get_url
 from homeassistant.util import raise_if_invalid_path
 
 from .camera import MotionFrontendCamera
@@ -75,36 +78,36 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         # setup webhook to manage 'push' from motion server
         try:
             webhook_id = f"{DOMAIN}_{config_entry.entry_id}"
-            hass.components.webhook.async_register(
-                DOMAIN, DOMAIN, webhook_id, api.async_handle_webhook
+            webhook.async_register(
+                hass, DOMAIN, DOMAIN, webhook_id, api.async_handle_webhook
             )
             api.webhook_id = (
                 webhook_id  # set here after succesfully calling async_register
             )
             webhook_address = data.get(CONF_WEBHOOK_ADDRESS, CONF_OPTION_DEFAULT)
             if webhook_address == CONF_OPTION_INTERNAL:
-                api.webhook_url = hass.helpers.network.get_url(
-                    allow_internal=True, allow_external=False, allow_cloud=False
+                api.webhook_url = get_url(
+                    hass, allow_internal=True, allow_external=False, allow_cloud=False
                 )
             elif webhook_address == CONF_OPTION_EXTERNAL:
-                api.webhook_url = hass.helpers.network.get_url(
+                api.webhook_url = get_url(
+                    hass,
                     allow_internal=False,
                     allow_external=True,
                     allow_cloud=True,
                     prefer_cloud=False,
                 )
             elif webhook_address == CONF_OPTION_CLOUD:
-                api.webhook_url = hass.helpers.network.get_url(
+                api.webhook_url = get_url(
+                    hass,
                     allow_internal=False,
                     allow_external=False,
                     allow_cloud=True,
                     prefer_cloud=True,
                 )
             else:
-                api.webhook_url = hass.helpers.network.get_url()
-            api.webhook_url += hass.components.webhook.async_generate_path(
-                api.webhook_id
-            )
+                api.webhook_url = get_url(hass)
+            api.webhook_url += webhook.async_generate_path(api.webhook_id)
 
             force = webhook_mode == CONF_OPTION_FORCE
 
@@ -127,8 +130,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         except Exception as exception:
             LOGGER.exception("exception (%s) setting up webhook", str(exception))
             if api.webhook_id:
-                hass.components.webhook.async_unregister(
-                    api.webhook_id
+                webhook.async_unregister(
+                    hass, api.webhook_id
                 )  # this is actually 'safe'
                 api.webhook_id = None
                 api.webhook_url = None
@@ -181,7 +184,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         api: MotionFrontendApi = hassdata[config_entry.entry_id]
         await api.close()
         if api.webhook_id:
-            hass.components.webhook.async_unregister(api.webhook_id)
+            webhook.async_unregister(hass, api.webhook_id)
             api.webhook_id = None
         if api.media_dir_id:
             try:  # better be safe...
@@ -251,9 +254,9 @@ class MotionFrontendApi(MotionHttpClient):
                         filename = Path(str(filename)).relative_to(
                             str(self.config[cs.TARGET_DIR])
                         )
-                        data[
-                            EXTRA_ATTR_FILENAME
-                        ] = f"{self.media_dir_id}/{str(filename)}"
+                        data[EXTRA_ATTR_FILENAME] = (
+                            f"{self.media_dir_id}/{str(filename)}"
+                        )
                 except:
                     pass
             camera.handle_event(data)
