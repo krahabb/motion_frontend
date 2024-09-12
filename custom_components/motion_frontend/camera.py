@@ -47,17 +47,17 @@ if typing.TYPE_CHECKING:
 
 SERVICE_KEY_PARAM = "param"
 SERVICE_KEY_VALUE = "value"
-CAMERA_SERVICES = (
+CAMERA_SERVICES: tuple[tuple[str,dict, str],...] = (
     (
         "config_set",
-        vol.Schema({
+        {
             vol.Required(SERVICE_KEY_PARAM): str,
             vol.Required(SERVICE_KEY_VALUE): str,
-        }),
+        },
         "async_config_set",
     ),
-    ("makemovie", vol.Schema({}), "async_makemovie"),
-    ("snapshot", vol.Schema({}), "async_snapshot"),
+    ("makemovie", {}, "async_makemovie"),
+    ("snapshot", {}, "async_snapshot"),
 )
 
 
