@@ -4,7 +4,6 @@ import asyncio
 from contextlib import closing
 from functools import partial
 import typing
-from typing import Any, Mapping
 
 import aiohttp
 from homeassistant import const as hac
@@ -17,7 +16,6 @@ from homeassistant.helpers.aiohttp_client import (
     async_aiohttp_proxy_web,
     async_get_clientsession,
 )
-from homeassistant.helpers.typing import StateType
 import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 import voluptuous as vol
@@ -37,14 +35,14 @@ from .const import (
     ON_MOTION_DETECTED,
     ON_MOVIE_END,
     ON_MOVIE_START,
-    ON_PICTURE_SAVE,
 )
 from .helpers import LOGGER
 from .motionclient import MotionCamera, TlsMode, config_schema as cs
 
 if typing.TYPE_CHECKING:
-    from . import MotionFrontendApi
     from homeassistant.helpers.device_registry import DeviceInfo
+
+    from . import MotionFrontendApi
 
 
 SERVICE_KEY_PARAM = "param"

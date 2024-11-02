@@ -10,9 +10,9 @@ import typing
 
 import aiohttp
 from homeassistant.components import webhook
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import callback
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import get_url
 from homeassistant.util import raise_if_invalid_path
@@ -49,6 +49,7 @@ if typing.TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
     from homeassistant.helpers.device_registry import DeviceInfo
+
     from .alarm_control_panel import MotionFrontendAlarmControlPanel
 
 

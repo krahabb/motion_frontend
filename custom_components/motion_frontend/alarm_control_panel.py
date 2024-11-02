@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import typing
 
-from homeassistant.components.alarm_control_panel import AlarmControlPanelEntity
-from homeassistant.components.alarm_control_panel.const import (
+from homeassistant.components.alarm_control_panel import (
+    AlarmControlPanelEntity,
     AlarmControlPanelEntityFeature,
     AlarmControlPanelState,
     CodeFormat,
 )
-from homeassistant.const import (
-    CONF_PIN,
-    STATE_PAUSED,
-    STATE_PROBLEM,
-)
+from homeassistant.const import CONF_PIN
 
 from .camera import MotionFrontendCamera
 from .const import (
@@ -28,10 +24,10 @@ from .const import (
     EXTRA_ATTR_LAST_PROBLEM,
     EXTRA_ATTR_LAST_TRIGGERED,
 )
-from .helpers import LOGGER
 
 if typing.TYPE_CHECKING:
     from homeassistant.helpers.device_registry import DeviceInfo
+
     from . import MotionFrontendApi
 
 
