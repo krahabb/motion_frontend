@@ -44,10 +44,12 @@ from .motionclient import MotionCamera, TlsMode, config_schema as cs
 
 if typing.TYPE_CHECKING:
     from . import MotionFrontendApi
+    from homeassistant.helpers.device_registry import DeviceInfo
+
 
 SERVICE_KEY_PARAM = "param"
 SERVICE_KEY_VALUE = "value"
-CAMERA_SERVICES: tuple[tuple[str,dict, str],...] = (
+CAMERA_SERVICES: tuple[tuple[str, dict, str], ...] = (
     (
         "config_set",
         {
@@ -92,67 +94,46 @@ def _extract_image_from_mjpeg(stream):
 class MotionFrontendCamera(camera.Camera, MotionCamera):
     client: MotionFrontendApi
 
+    # HA core entity attributes:
+    _attr_assumed_state = False
+    _attr_has_entity_name = True
+    _attr_force_update = False
+    _attr_icon = "mdi:camcorder"
+    _attr_should_poll = False
+
+    available: bool
+    device_info: "DeviceInfo"
+    extra_state_attributes: dict[str, object]
+    is_recording: bool
+    motion_detection_enabled: bool
+    unique_id: str
+
+    __slots__ = (
+        "available",
+        "device_info",
+        "extra_state_attributes",
+        "is_recording",
+        "is_triggered",
+        "motion_detection_enabled",
+        "unique_id",
+        "_camera_image",
+    )
 
     def __init__(self, client: MotionFrontendApi, id: str):
         MotionCamera.__init__(self, client, id)
-        self._unique_id = f"{client.unique_id}_{self.camera_id}"
-        self._recording = False
-        self._triggered = False
-        self._state = (
-            hac.STATE_PROBLEM
-            if not self.connected
-            else hac.STATE_PAUSED
-            if self.paused
-            else camera.STATE_IDLE
-        )
-        self._attr_extra_state_attributes = {}
-        self._camera_image = None  # cached copy
-        self._available = True
+        self._camera_image = None
+        self.available = self.connected
+        self.device_info = self.client.device_info
+        self.extra_state_attributes = {}
+        self.is_recording = False
+        self.is_triggered = False
+        self.motion_detection_enabled = not self.paused
+        self.unique_id = f"{client.unique_id}_{self.camera_id}"
         camera.Camera.__init__(self)
-
-    @property
-    def unique_id(self) -> str:
-        return self._unique_id
-
-    @property
-    def device_info(self):
-        return self.client.device_info
-
-    @property
-    def assumed_state(self) -> bool:
-        return False
-
-    @property
-    def should_poll(self):
-        return False
-
-    @property
-    def icon(self):
-        return "mdi:camcorder"
 
     @property
     def name(self):
         return self.config.get(cs.CAMERA_NAME, self.camera_id)
-
-    @property
-    def available(self):
-        return self.client.is_available and self._available
-
-    @property
-    def state(self) -> StateType:
-        return self._state
-
-    @property
-    def extra_state_attributes(self) -> Mapping[str, Any]:
-        return self._attr_extra_state_attributes
-
-    @property
-    def is_recording(self):
-        return self._recording
-
-    @property
-    def motion_detection_enabled(self):
-        return not self.paused
 
     # override
     async def async_camera_image(
@@ -171,8 +152,6 @@ class MotionFrontendCamera(camera.Camera, MotionCamera):
                     self._camera_image = await self.hass.async_add_executor_job(
                         partial(self.camera_image, width=width, height=height)
                     )
-                    if not self._available:
-                        self._updatestate()
                     return self._camera_image
 
                 websession = async_get_clientsession(
@@ -189,15 +168,12 @@ class MotionFrontendCamera(camera.Camera, MotionCamera):
                 async with asyncio.timeout(10):
                     response = await websession.get(image_url, auth=auth)
                     self._camera_image = await response.read()
-                    if not self._available:
-                        self._updatestate()
                     return self._camera_image
 
             except Exception as exception:
                 LOGGER.warning(
                     "Error (%s) fetching image from %s", str(exception), self.name
                 )
-                self._set_state(None)
 
         return self._camera_image
 
@@ -273,10 +249,10 @@ class MotionFrontendCamera(camera.Camera, MotionCamera):
     def handle_event(self, data: dict) -> None:
         event_id = data.get(EXTRA_ATTR_EVENT_ID)
         if event_id:
-            self._attr_extra_state_attributes[EXTRA_ATTR_EVENT_ID] = event_id
+            self.extra_state_attributes[EXTRA_ATTR_EVENT_ID] = event_id
         filename = data.get(EXTRA_ATTR_FILENAME)
         if filename:
-            self._attr_extra_state_attributes[EXTRA_ATTR_FILENAME] = filename
+            self.extra_state_attributes[EXTRA_ATTR_FILENAME] = filename
 
         event = data.get("event")
         if event == ON_MOVIE_START:
@@ -294,35 +270,30 @@ class MotionFrontendCamera(camera.Camera, MotionCamera):
         return
 
     def _setrecording(self, recording: bool):
-        if self._recording != recording:
-            self._recording = recording
-            self._updatestate()
-
-    @property
-    def is_triggered(self):
-        return self._triggered
+        if self.is_recording != recording:
+            self.is_recording = recording
+            self._flush_state()
 
     def _settriggered(self, triggered: bool):
-        if self._triggered != triggered:
-            self._triggered = triggered
-            self._attr_extra_state_attributes[EXTRA_ATTR_TRIGGERED] = triggered
-            self._updatestate()
+        if self.is_triggered != triggered:
+            self.is_triggered = triggered
+            self.extra_state_attributes[EXTRA_ATTR_TRIGGERED] = triggered
+            self._flush_state()
 
     # override MotionCamera
     def on_connected_changed(self):
-        self._attr_extra_state_attributes[EXTRA_ATTR_CONNECTED] = self.connected
-        self._updatestate()
+        self.extra_state_attributes[EXTRA_ATTR_CONNECTED] = self.connected
+        self.available = self.connected
+        self._flush_state()
 
     # override MotionCamera
     def on_paused_changed(self):
-        self._attr_extra_state_attributes[EXTRA_ATTR_PAUSED] = self.paused
-        self._updatestate()
+        self.extra_state_attributes[EXTRA_ATTR_PAUSED] = self.paused
+        self.motion_detection_enabled = not self.paused
+        self._flush_state()
 
+    """
     def _updatestate(self):
-        """
-        called every time an underlying state related property changes
-        this will not always trigger an HA state change (see _set_state)
-        """
         if self.connected:
             if self._recording:
                 self._set_state(camera.STATE_RECORDING)
@@ -334,15 +305,9 @@ class MotionFrontendCamera(camera.Camera, MotionCamera):
                 self._set_state(camera.STATE_IDLE)
         else:
             self._set_state(hac.STATE_PROBLEM)
-        # we'll notify our api here since HA state could have not changed
-        # but some inner property has
-        self.client.notify_state_changed(self)
+    """
 
-    def _set_state(self, state: str | None) -> None:
-        # we'll get here since an underlying state changed
-        # we always save to HA since even tho _state has not changed
-        # something might have in attributes
-        self._state = state
-        self._available = state is not None
+    def _flush_state(self) -> None:
         if self.hass and self.enabled:
             self.async_write_ha_state()
+        self.client.notify_state_changed(self)

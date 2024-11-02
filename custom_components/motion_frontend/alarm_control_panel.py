@@ -1,4 +1,5 @@
 """Support for Motion daemon DVR Alarm Control Panels."""
+
 from __future__ import annotations
 
 import typing
@@ -6,16 +7,11 @@ import typing
 from homeassistant.components.alarm_control_panel import AlarmControlPanelEntity
 from homeassistant.components.alarm_control_panel.const import (
     AlarmControlPanelEntityFeature,
+    AlarmControlPanelState,
     CodeFormat,
 )
 from homeassistant.const import (
     CONF_PIN,
-    STATE_ALARM_ARMED_AWAY,
-    STATE_ALARM_ARMED_CUSTOM_BYPASS,
-    STATE_ALARM_ARMED_HOME,
-    STATE_ALARM_ARMED_NIGHT,
-    STATE_ALARM_DISARMED,
-    STATE_ALARM_TRIGGERED,
     STATE_PAUSED,
     STATE_PROBLEM,
 )
@@ -35,6 +31,7 @@ from .const import (
 from .helpers import LOGGER
 
 if typing.TYPE_CHECKING:
+    from homeassistant.helpers.device_registry import DeviceInfo
     from . import MotionFrontendApi
 
 
@@ -45,29 +42,73 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
 
 class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
+
+    _attr_should_poll = True
+    _attr_supported_features = (
+        AlarmControlPanelEntityFeature.ARM_HOME
+        | AlarmControlPanelEntityFeature.ARM_AWAY
+        | AlarmControlPanelEntityFeature.ARM_CUSTOM_BYPASS
+        | AlarmControlPanelEntityFeature.ARM_NIGHT
+    )
+
+    alarm_state: AlarmControlPanelState
+    code_arm_required: bool
+    code_format: CodeFormat | None
+    device_info: "DeviceInfo"
+    extra_state_attributes: dict
+    name: str
+    unique_id: str
+
+    _armmode: AlarmControlPanelState
+    _disarm_sets: dict[AlarmControlPanelState, frozenset]
+    _current_disarm_set: frozenset
+
+    DISARM_SET_MAP = {
+        AlarmControlPanelState.ARMED_HOME: CONF_ALARM_DISARMHOME_CAMERAS,
+        AlarmControlPanelState.ARMED_AWAY: CONF_ALARM_DISARMAWAY_CAMERAS,
+        AlarmControlPanelState.ARMED_NIGHT: CONF_ALARM_DISARMNIGHT_CAMERAS,
+        AlarmControlPanelState.ARMED_CUSTOM_BYPASS: CONF_ALARM_DISARMBYPASS_CAMERAS,
+    }
+
+    __slots__ = (
+        "alarm_state",
+        "code_arm_required",
+        "code_format",
+        "device_info",
+        "extra_state_attributes",
+        "name",
+        "unique_id",
+        "_api",
+        "_armmode",
+        "_pin",
+        "_pause_disarmed",
+        "_disarm_sets",
+        "_current_disarm_set",
+    )
+
     def __init__(self, api: MotionFrontendApi):
         self._api = api
-        self._unique_id = f"{api.unique_id}_CP"
-        self._name = f"{api.name} Alarm Panel"
-        self._state = STATE_ALARM_DISARMED
-        self._attr_extra_state_attributes = {}
-        self._armmode = STATE_ALARM_DISARMED
+        self._armmode = AlarmControlPanelState.DISARMED
         data = api.config_data.get(CONF_OPTION_ALARM, {})
         self._pin: str = str(data.get(CONF_PIN))
         self._pause_disarmed: bool = data.get(CONF_ALARM_PAUSE_DISARMED, False)
-        self._disarmhome_cameras: frozenset = frozenset(
-            data.get(CONF_ALARM_DISARMHOME_CAMERAS, [])
+        self._disarm_sets = {}
+        self._current_disarm_set = frozenset()
+        for _state, _config_key in self.DISARM_SET_MAP.items():
+            self._disarm_sets[_state] = frozenset(data.get(_config_key, []))
+
+        self.alarm_state = AlarmControlPanelState.DISARMED
+        self.code_arm_required = bool(self._pin)
+        self.code_format = (
+            (CodeFormat.NUMBER if self._pin.isnumeric() else CodeFormat.TEXT)
+            if self._pin
+            else None
         )
-        self._disarmaway_cameras: frozenset = frozenset(
-            data.get(CONF_ALARM_DISARMAWAY_CAMERAS, [])
-        )
-        self._disarmnight_cameras: frozenset = frozenset(
-            data.get(CONF_ALARM_DISARMNIGHT_CAMERAS, [])
-        )
-        self._disarmbypass_cameras: frozenset = frozenset(
-            data.get(CONF_ALARM_DISARMBYPASS_CAMERAS, [])
-        )
-        self._disarmed_cameras: frozenset = frozenset()
+        self.device_info = self._api.device_info
+        self.extra_state_attributes = {}
+        self.name = f"{api.name} Alarm Panel"
+        self.unique_id = f"{api.unique_id}_CP"
+
         """
         The following code is a bit faulty since it depends on cameras being correctly initialized
         and updated at the moment of this execution
@@ -81,73 +122,11 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
             }
             # bear in mind only the first matching state/set gets assigned
             # if 2 or more disarm...cameras are the same there's no way to tell the difference
-            if disarmed == self._disarmhome_cameras:
-                self._disarmed_cameras = self._disarmhome_cameras
-                self._state = self._armmode = STATE_ALARM_ARMED_HOME
-            elif disarmed == self._disarmaway_cameras:
-                self._disarmed_cameras = self._disarmaway_cameras
-                self._state = self._armmode = STATE_ALARM_ARMED_AWAY
-            elif disarmed == self._disarmnight_cameras:
-                self._disarmed_cameras = self._disarmnight_cameras
-                self._state = self._armmode = STATE_ALARM_ARMED_NIGHT
-            elif disarmed == self._disarmbypass_cameras:
-                self._disarmed_cameras = self._disarmbypass_cameras
-                self._state = self._armmode = STATE_ALARM_ARMED_CUSTOM_BYPASS
-
-    @property
-    def unique_id(self) -> str:
-        return self._unique_id
-
-    @property
-    def device_info(self):
-        return self._api.device_info
-
-    @property
-    def icon(self):
-        return "mdi:security"
-
-    @property
-    def assumed_state(self) -> bool:
-        return False
-
-    @property
-    def should_poll(self) -> bool:
-        return True
-
-    @property
-    def supported_features(self) -> int:
-        return (
-            AlarmControlPanelEntityFeature.ARM_HOME
-            | AlarmControlPanelEntityFeature.ARM_AWAY
-            | AlarmControlPanelEntityFeature.ARM_CUSTOM_BYPASS
-            | AlarmControlPanelEntityFeature.ARM_NIGHT
-        )
-
-    @property
-    def code_format(self):
-        if self._pin:
-            return CodeFormat.NUMBER if self._pin.isnumeric() else CodeFormat.TEXT
-        return None
-
-    @property
-    def code_arm_required(self):
-        return self._pin is not None and len(self._pin) > 0
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def available(self) -> bool:
-        return True
-
-    @property
-    def state(self):
-        return self._state
-
-    @property
-    def extra_state_attributes(self):
-        return self._attr_extra_state_attributes
+            for _state, _disarm_set in self._disarm_sets.items():
+                if disarmed == _disarm_set:
+                    self._current_disarm_set = _disarm_set
+                    self.alarm_state = self._armmode = _state
+                    break
 
     async def async_update(self):
         """
@@ -164,8 +143,8 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
                 self.async_write_ha_state()
         """
         await self._api.async_detection_status()
-        if (not self._api.is_available) and (self._state != STATE_PROBLEM):
-            self._set_state(STATE_PROBLEM)
+        if not self._api.is_available:
+            self._set_state(AlarmControlPanelState.PENDING)
 
     async def async_added_to_hass(self) -> None:
         self._api.alarm_control_panel = self
@@ -175,85 +154,78 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
 
     async def async_alarm_disarm(self, code=None):
         if code == self._pin:
+            self._current_disarm_set = frozenset()
             if self._pause_disarmed:
                 for camera in self._api.cameras.values():
                     camera.paused = True
-            self._disarmed_cameras = frozenset()
-            self._set_armmode(STATE_ALARM_DISARMED)
+            self._set_armmode(AlarmControlPanelState.DISARMED)
 
     async def async_alarm_arm_home(self, code=None):
         if code == self._pin:
-            if self._pause_disarmed:
-                for camera in self._api.cameras.values():
-                    camera.paused = camera.id in self._disarmhome_cameras
-            self._disarmed_cameras = self._disarmhome_cameras
-            self._set_armmode(STATE_ALARM_ARMED_HOME)
+            await self._async_alarm_arm_state(AlarmControlPanelState.ARMED_HOME)
 
     async def async_alarm_arm_away(self, code=None):
         if code == self._pin:
-            if self._pause_disarmed:
-                for camera in self._api.cameras.values():
-                    camera.paused = camera.id in self._disarmaway_cameras
-            self._disarmed_cameras = self._disarmaway_cameras
-            self._set_armmode(STATE_ALARM_ARMED_AWAY)
+            await self._async_alarm_arm_state(AlarmControlPanelState.ARMED_AWAY)
 
     async def async_alarm_arm_night(self, code=None):
         if code == self._pin:
-            if self._pause_disarmed:
-                for camera in self._api.cameras.values():
-                    camera.paused = camera.id in self._disarmnight_cameras
-            self._disarmed_cameras = self._disarmnight_cameras
-            self._set_armmode(STATE_ALARM_ARMED_NIGHT)
+            await self._async_alarm_arm_state(AlarmControlPanelState.ARMED_NIGHT)
 
     async def async_alarm_arm_custom_bypass(self, code=None):
         if code == self._pin:
-            if self._pause_disarmed:
-                for camera in self._api.cameras.values():
-                    camera.paused = camera.id in self._disarmbypass_cameras
-            self._disarmed_cameras = self._disarmbypass_cameras
-            self._set_armmode(STATE_ALARM_ARMED_CUSTOM_BYPASS)
+            await self._async_alarm_arm_state(
+                AlarmControlPanelState.ARMED_CUSTOM_BYPASS
+            )
+
+    async def _async_alarm_arm_state(self, state: AlarmControlPanelState):
+        self._current_disarm_set = self._disarm_sets[state]
+        if self._pause_disarmed:
+            for camera in self._api.cameras.values():
+                camera.paused = camera.id in self._current_disarm_set
+        self._set_armmode(state)
 
     def notify_state_changed(self, camera: MotionFrontendCamera):
-        if self._armmode is STATE_ALARM_DISARMED:
+        if self._armmode is AlarmControlPanelState.DISARMED:
             return
 
-        if camera.id in self._disarmed_cameras:
+        if camera.id in self._current_disarm_set:
             return
 
         if camera.is_triggered:
-            self._attr_extra_state_attributes[
-                EXTRA_ATTR_LAST_TRIGGERED
-            ] = camera.entity_id
-            self._set_state(STATE_ALARM_TRIGGERED)
+            self.extra_state_attributes[EXTRA_ATTR_LAST_TRIGGERED] = camera.entity_id
+            self._set_state(AlarmControlPanelState.TRIGGERED)
             return
 
-        if camera.state == STATE_PROBLEM:
-            self._attr_extra_state_attributes[
-                EXTRA_ATTR_LAST_PROBLEM
-            ] = camera.entity_id
-            if self._state != STATE_ALARM_TRIGGERED:
-                self._set_state(STATE_PROBLEM)  # report camera 'PROBLEM' to this alarm
+        if not camera.connected:
+            self.extra_state_attributes[EXTRA_ATTR_LAST_PROBLEM] = camera.entity_id
+            if self.alarm_state is not AlarmControlPanelState.TRIGGERED:
+                # We'll use PENDING to indicate a camera connection problem
+                self._set_state(AlarmControlPanelState.PENDING)
                 return
 
         # if not any 'rising' event then check the state of all the other
         problem = False
         for _id, _camera in self._api.cameras.items():
-            if id in self._disarmed_cameras:
+            if _id in self._current_disarm_set:
                 continue
             if _camera.is_triggered:
-                self._set_state(STATE_ALARM_TRIGGERED)
+                self._set_state(AlarmControlPanelState.TRIGGERED)
                 break
-            problem |= (_camera.state == STATE_PROBLEM)
+            problem |= not _camera.connected
         else:
-            self._set_state(STATE_PROBLEM if problem else self._armmode)
+            # We'll use PENDING to indicate a camera connection problem
+            self._set_state(
+                AlarmControlPanelState.PENDING if problem else self._armmode
+            )
 
-    def _set_armmode(self, state: str) -> None:
+    def _set_armmode(self, state: AlarmControlPanelState) -> None:
         if self._armmode != state:
             self._armmode = state
             self._set_state(state)
 
-    def _set_state(self, state: str) -> None:
-        if self._state != state:
-            self._state = state
+    def _set_state(self, state: AlarmControlPanelState) -> None:
+        if self.alarm_state != state:
+            self.alarm_state = state
             if self.hass and self.enabled:
                 self.async_write_ha_state()
