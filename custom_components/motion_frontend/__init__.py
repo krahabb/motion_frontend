@@ -48,7 +48,7 @@ if typing.TYPE_CHECKING:
     import aiohttp.web
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
-
+    from homeassistant.helpers.device_registry import DeviceInfo
     from .alarm_control_panel import MotionFrontendAlarmControlPanel
 
 
@@ -217,7 +217,7 @@ class MotionFrontendApi(MotionHttpClient):
         )
 
     @property
-    def device_info(self):
+    def device_info(self) -> "DeviceInfo":
         return {
             "identifiers": {(DOMAIN, self.unique_id)},
             "name": self.name,
