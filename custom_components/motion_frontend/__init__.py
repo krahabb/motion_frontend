@@ -1,22 +1,20 @@
 """The Motion Frontend integration."""
 
-from __future__ import annotations
-
 import asyncio
 import os
 from pathlib import Path
-import types
 import typing
 
-import aiohttp
 from homeassistant.components import webhook
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+import homeassistant.const as hac
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import get_url
 from homeassistant.util import raise_if_invalid_path
 
+# forward import since async_setup_entry complains about importing module in main loop
+from .alarm_control_panel import MotionFrontendAlarmControlPanel
 from .camera import MotionFrontendCamera
 from .const import (
     CONF_MEDIASOURCE,
@@ -45,15 +43,103 @@ from .motionclient import (
 )
 
 if typing.TYPE_CHECKING:
+    from types import MappingProxyType
+
     import aiohttp.web
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
     from homeassistant.helpers.device_registry import DeviceInfo
 
-    from .alarm_control_panel import MotionFrontendAlarmControlPanel
+
+class MotionFrontendApi(MotionHttpClient):
+    cameras: dict[str, MotionFrontendCamera]
+
+    def __init__(
+        self, hass: "HomeAssistant", data: "MappingProxyType[str, typing.Any]"
+    ):
+        self.hass = hass
+        self.config_data = data
+        self.webhook_id: str | None = None
+        self.webhook_url: str | None = None
+        self.media_dir_id: str | None = None
+        self.unsub_entry_update_listener: CALLBACK_TYPE | None = None
+        self.alarm_control_panel: MotionFrontendAlarmControlPanel | None = None
+        MotionHttpClient.__init__(
+            self,
+            data[hac.CONF_HOST],
+            data[hac.CONF_PORT],
+            username=data.get(hac.CONF_USERNAME),
+            password=data.get(hac.CONF_PASSWORD),
+            tlsmode=MAP_TLS_MODE.get(
+                data.get(CONF_TLS_MODE, CONF_OPTION_AUTO), TlsMode.AUTO
+            ),
+            session=async_get_clientsession(hass),
+            logger=LOGGER,
+            camera_factory=_entity_camera_factory,  # type: ignore
+        )
+
+    @property
+    def device_info(self) -> "DeviceInfo":
+        return {
+            "identifiers": {(DOMAIN, self.unique_id)},
+            "name": self.name,
+            "manufacturer": "motion-project.github.io",
+            "sw_version": self.version,
+        }
+
+    async def async_handle_webhook(
+        self, hass: "HomeAssistant", webhook_id: str, request: "aiohttp.web.Request"
+    ):
+        try:
+            async with asyncio.timeout(5):
+                data = dict(await request.post())
+
+            LOGGER.debug("Received webhook - (%s)", data)
+
+            camera = typing.cast(
+                MotionFrontendCamera, self.getcamera(str(data["camera_id"]))
+            )
+            if self.media_dir_id:
+                try:  # fix the path as a media_source compatible url
+                    filename = data.get(EXTRA_ATTR_FILENAME)
+                    if filename:
+                        filename = Path(str(filename)).relative_to(
+                            str(self.config[cs.TARGET_DIR])
+                        )
+                        data[EXTRA_ATTR_FILENAME] = (
+                            f"{self.media_dir_id}/{str(filename)}"
+                        )
+                except:
+                    pass
+            camera.handle_event(data)
+
+        except Exception as exception:
+            LOGGER.error(
+                "async_handle_webhook - %s(%s)",
+                exception.__class__.__name__,
+                str(exception),
+            )
+
+    @callback
+    async def entry_update_listener(
+        self, hass: "HomeAssistant", config_entry: "ConfigEntry"
+    ):
+        await hass.config_entries.async_reload(config_entry.entry_id)
+        return
+
+    def notify_state_changed(self, camera: MotionFrontendCamera):
+        """
+        called by cameras to synchronously update alarm panel
+        """
+        if self.alarm_control_panel:
+            self.alarm_control_panel.notify_state_changed(camera)
 
 
-async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+def _entity_camera_factory(client: MotionFrontendApi, id: str):
+    return MotionFrontendCamera(client, id)
+
+
+async def async_setup_entry(hass: "HomeAssistant", config_entry: "ConfigEntry"):
     hass.data.setdefault(DOMAIN, {})
 
     data = config_entry.data
@@ -167,10 +253,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+async def async_unload_entry(hass: "HomeAssistant", config_entry: "ConfigEntry"):
 
     if await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS):
-        hassdata = hass.data[DOMAIN]
+        hassdata: dict = hass.data[DOMAIN]
         api: MotionFrontendApi = hassdata[config_entry.entry_id]
         await api.close()
         if api.webhook_id:
@@ -188,91 +274,3 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         return True
 
     return False
-
-
-class MotionFrontendApi(MotionHttpClient):
-    cameras: dict[str, MotionFrontendCamera]
-
-    def __init__(
-        self, hass: HomeAssistant, data: types.MappingProxyType[str, typing.Any]
-    ):
-        self.hass = hass
-        self.config_data = data
-        self.webhook_id: str | None = None
-        self.webhook_url: str | None = None
-        self.media_dir_id: str | None = None
-        self.unsub_entry_update_listener: CALLBACK_TYPE | None = None
-        self.alarm_control_panel: MotionFrontendAlarmControlPanel | None = None
-        MotionHttpClient.__init__(
-            self,
-            data[CONF_HOST],
-            data[CONF_PORT],
-            username=data.get(CONF_USERNAME),
-            password=data.get(CONF_PASSWORD),
-            tlsmode=MAP_TLS_MODE.get(
-                data.get(CONF_TLS_MODE, CONF_OPTION_AUTO), TlsMode.AUTO
-            ),
-            session=async_get_clientsession(hass),
-            logger=LOGGER,
-            camera_factory=_entity_camera_factory,  # type: ignore
-        )
-
-    @property
-    def device_info(self) -> "DeviceInfo":
-        return {
-            "identifiers": {(DOMAIN, self.unique_id)},
-            "name": self.name,
-            "manufacturer": "motion-project.github.io",
-            "sw_version": self.version,
-        }
-
-    async def async_handle_webhook(
-        self, hass: HomeAssistant, webhook_id: str, request: aiohttp.web.Request
-    ):
-        try:
-            async with asyncio.timeout(5):
-                data = dict(await request.post())
-
-            LOGGER.debug("Received webhook - (%s)", data)
-
-            camera = typing.cast(
-                MotionFrontendCamera, self.getcamera(str(data["camera_id"]))
-            )
-            if self.media_dir_id:
-                try:  # fix the path as a media_source compatible url
-                    filename = data.get(EXTRA_ATTR_FILENAME)
-                    if filename:
-                        filename = Path(str(filename)).relative_to(
-                            str(self.config[cs.TARGET_DIR])
-                        )
-                        data[EXTRA_ATTR_FILENAME] = (
-                            f"{self.media_dir_id}/{str(filename)}"
-                        )
-                except:
-                    pass
-            camera.handle_event(data)
-
-        except Exception as exception:
-            LOGGER.error(
-                "async_handle_webhook - %s(%s)",
-                exception.__class__.__name__,
-                str(exception),
-            )
-
-    @callback
-    async def entry_update_listener(
-        self, hass: HomeAssistant, config_entry: ConfigEntry
-    ):
-        await hass.config_entries.async_reload(config_entry.entry_id)
-        return
-
-    def notify_state_changed(self, camera: MotionFrontendCamera):
-        """
-        called by cameras to synchronously update alarm panel
-        """
-        if self.alarm_control_panel:
-            self.alarm_control_panel.notify_state_changed(camera)
-
-
-def _entity_camera_factory(client: MotionFrontendApi, id: str):
-    return MotionFrontendCamera(client, id)

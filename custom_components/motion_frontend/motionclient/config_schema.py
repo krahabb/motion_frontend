@@ -1,11 +1,9 @@
 """
 Motion daemon config parameters definitions
 """
-from __future__ import annotations
 
 from collections import ChainMap
 import typing
-from typing import Any, Container
 
 import voluptuous as vol
 
@@ -167,6 +165,7 @@ class BoolParam(Param):
 
 AnyParam: typing.TypeAlias = Param | UpperStringParam | IntParam | BoolParam | None
 
+
 #
 # static 'descriptors' helper class to describe motion params properties
 #
@@ -174,8 +173,8 @@ class Descriptor:
     def __init__(
         self,
         _builder: type[Param] | type[IntParam],
-        _validator: Any = None,
-        _set: Container | None = None,
+        _validator: typing.Any = None,
+        _set: typing.Container | None = None,
     ):
         self.builder = _builder
         self.set = _set
@@ -191,7 +190,7 @@ def DESCRIPTOR_INT_RANGE(min: int | None = None, max: int | None = None) -> Desc
     return Descriptor(IntParam, _validator=vol.Range(min=min, max=max))
 
 
-def DESCRIPTOR_INT_ENUM(_set: Container) -> Descriptor:
+def DESCRIPTOR_INT_ENUM(_set: typing.Container) -> Descriptor:
     return Descriptor(IntParam, _set=_set)
 
 
@@ -200,15 +199,15 @@ DESCRIPTOR_INT_PERCENT = DESCRIPTOR_INT_RANGE(min=0, max=100)
 DESCRIPTOR_BYTE = DESCRIPTOR_INT_RANGE(min=0, max=255)
 
 
-def DESCRIPTOR_STRING_ENUM(_set: Container) -> Descriptor:
+def DESCRIPTOR_STRING_ENUM(_set: typing.Container) -> Descriptor:
     return Descriptor(Param, _set=_set)
 
 
-def DESCRIPTOR_UPPERSTRING_ENUM(_set: Container) -> Descriptor:
+def DESCRIPTOR_UPPERSTRING_ENUM(_set: typing.Container) -> Descriptor:
     return Descriptor(UpperStringParam, _set=_set)
 
 
-def build_value(key: str, value: Any):
+def build_value(key: str, value: typing.Any):
     """
     Polimorfic factory for typed params:
     key specifies a well-defined type usually so we parse and cast value

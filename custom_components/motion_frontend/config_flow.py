@@ -1,21 +1,7 @@
 """Config flow to configure Agent devices."""
-from __future__ import annotations
 
-from homeassistant.config_entries import (
-    CONN_CLASS_LOCAL_PUSH,
-    ConfigEntry,
-    ConfigFlow,
-    OptionsFlow,
-)
-from homeassistant.const import (
-    CONF_ARMING_TIME,
-    CONF_DELAY_TIME,
-    CONF_HOST,
-    CONF_PASSWORD,
-    CONF_PIN,
-    CONF_PORT,
-    CONF_USERNAME,
-)
+import homeassistant.config_entries as config_entries
+import homeassistant.const as hac
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
@@ -130,8 +116,8 @@ def _get_config_section_url(version: str, section: str) -> str:
     return f"https://motion-project.github.io/{version}/{page}#{href}"
 
 
-class MotionFlowHandler(ConfigFlow, domain=DOMAIN):
-    CONNECTION_CLASS = CONN_CLASS_LOCAL_PUSH
+class MotionFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
+    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
     VERSION = 1
     MINOR_VERSION = 1
 
@@ -145,10 +131,10 @@ class MotionFlowHandler(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             client = MotionHttpClient(
-                user_input[CONF_HOST],
-                user_input[CONF_PORT],
-                username=user_input.get(CONF_USERNAME),
-                password=user_input.get(CONF_PASSWORD),
+                user_input[hac.CONF_HOST],
+                user_input[hac.CONF_PORT],
+                username=user_input.get(hac.CONF_USERNAME),
+                password=user_input.get(hac.CONF_PASSWORD),
                 tlsmode=MAP_TLS_MODE[
                     user_input.get(CONF_TLS_MODE, CONF_TLS_MODE_OPTIONS[0])
                 ],
@@ -173,49 +159,57 @@ class MotionFlowHandler(ConfigFlow, domain=DOMAIN):
 
         schema = {
             vol.Required(
-                CONF_HOST,
+                hac.CONF_HOST,
                 default="localhost",  # type: ignore
                 description={"suggested_value": client.host} if client else None,
             ): str,
             vol.Required(
-                CONF_PORT,
+                hac.CONF_PORT,
                 default=CONF_PORT_DEFAULT,  # type: ignore
                 description={"suggested_value": client.port} if client else None,
             ): int,
             vol.Optional(
-                CONF_USERNAME,
+                hac.CONF_USERNAME,
                 description={"suggested_value": client.username} if client else None,
             ): str,
             vol.Optional(
-                CONF_PASSWORD,
+                hac.CONF_PASSWORD,
                 description={"suggested_value": client.password} if client else None,
             ): str,
             vol.Required(
                 CONF_TLS_MODE,
                 default=CONF_TLS_MODE_OPTIONS[0],  # type: ignore
-                description={"suggested_value": user_input.get(CONF_TLS_MODE)}
-                if user_input
-                else CONF_TLS_MODE_OPTIONS[0],
+                description=(
+                    {"suggested_value": user_input.get(CONF_TLS_MODE)}
+                    if user_input
+                    else CONF_TLS_MODE_OPTIONS[0]
+                ),
             ): vol.In(CONF_TLS_MODE_OPTIONS),
             vol.Optional(
                 CONF_WEBHOOK_MODE,
                 default=CONF_WEBHOOK_MODE_OPTIONS[0],  # type: ignore
-                description={"suggested_value": user_input.get(CONF_WEBHOOK_MODE)}
-                if user_input
-                else CONF_WEBHOOK_MODE_OPTIONS[0],
+                description=(
+                    {"suggested_value": user_input.get(CONF_WEBHOOK_MODE)}
+                    if user_input
+                    else CONF_WEBHOOK_MODE_OPTIONS[0]
+                ),
             ): vol.In(CONF_WEBHOOK_MODE_OPTIONS),
             vol.Optional(
                 CONF_WEBHOOK_ADDRESS,
                 default=CONF_WEBHOOK_ADDRESS_OPTIONS[0],  # type: ignore
-                description={"suggested_value": user_input.get(CONF_WEBHOOK_ADDRESS)}
-                if user_input
-                else CONF_WEBHOOK_ADDRESS_OPTIONS[0],
+                description=(
+                    {"suggested_value": user_input.get(CONF_WEBHOOK_ADDRESS)}
+                    if user_input
+                    else CONF_WEBHOOK_ADDRESS_OPTIONS[0]
+                ),
             ): vol.In(CONF_WEBHOOK_ADDRESS_OPTIONS),
             vol.Optional(
                 CONF_MEDIASOURCE,
-                description={"suggested_value": user_input.get(CONF_MEDIASOURCE)}
-                if user_input
-                else True,
+                description=(
+                    {"suggested_value": user_input.get(CONF_MEDIASOURCE)}
+                    if user_input
+                    else True
+                ),
             ): bool,
         }
 
@@ -224,8 +218,8 @@ class MotionFlowHandler(ConfigFlow, domain=DOMAIN):
         )
 
 
-class OptionsFlowHandler(OptionsFlow):
-    def __init__(self, config_entry: ConfigEntry):
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    def __init__(self, config_entry: config_entries.ConfigEntry):
         self._config_entry = config_entry
         self._data = dict(config_entry.data)
 
@@ -261,9 +255,11 @@ class OptionsFlowHandler(OptionsFlow):
             # entry could be not loaded!! (disabled or awaiting initial connection)
             if self._api:
                 self._config_set = {
-                    _id: "Global motion.conf"
-                    if _id == cs.GLOBAL_ID
-                    else config.get(cs.CAMERA_NAME, _id)
+                    _id: (
+                        "Global motion.conf"
+                        if _id == cs.GLOBAL_ID
+                        else config.get(cs.CAMERA_NAME, _id)
+                    )
                     for _id, config in self._api.configs.items()
                 }
 
@@ -288,10 +284,10 @@ class OptionsFlowHandler(OptionsFlow):
 
         if user_input is not None:
             client = MotionHttpClient(
-                data[CONF_HOST],
-                data[CONF_PORT],
-                username=user_input.get(CONF_USERNAME),
-                password=user_input.get(CONF_PASSWORD),
+                data[hac.CONF_HOST],
+                data[hac.CONF_PORT],
+                username=user_input.get(hac.CONF_USERNAME),
+                password=user_input.get(hac.CONF_PASSWORD),
                 tlsmode=MAP_TLS_MODE[
                     user_input.get(CONF_TLS_MODE, CONF_TLS_MODE_OPTIONS[0])
                 ],
@@ -309,8 +305,8 @@ class OptionsFlowHandler(OptionsFlow):
 
             await client.close()
 
-            data[CONF_USERNAME] = client.username
-            data[CONF_PASSWORD] = client.password
+            data[hac.CONF_USERNAME] = client.username
+            data[hac.CONF_PASSWORD] = client.password
             data[CONF_TLS_MODE] = user_input.get(CONF_TLS_MODE)
             data[CONF_WEBHOOK_MODE] = user_input.get(CONF_WEBHOOK_MODE)
             data[CONF_WEBHOOK_ADDRESS] = user_input.get(CONF_WEBHOOK_ADDRESS)
@@ -323,12 +319,12 @@ class OptionsFlowHandler(OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        CONF_USERNAME,
-                        description={"suggested_value": data.get(CONF_USERNAME)},
+                        hac.CONF_USERNAME,
+                        description={"suggested_value": data.get(hac.CONF_USERNAME)},
                     ): str,
                     vol.Optional(
-                        CONF_PASSWORD,
-                        description={"suggested_value": data.get(CONF_PASSWORD)},
+                        hac.CONF_PASSWORD,
+                        description={"suggested_value": data.get(hac.CONF_PASSWORD)},
                     ): str,
                     vol.Optional(
                         CONF_TLS_MODE,
@@ -386,7 +382,8 @@ class OptionsFlowHandler(OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        CONF_PIN, description={"suggested_value": data.get(CONF_PIN)}
+                        hac.CONF_PIN,
+                        description={"suggested_value": data.get(hac.CONF_PIN)},
                     ): str,  # it looks like we cannot serialize other than str, int and few other
                     # it would be nice to have a nice regex here...
                     vol.Optional(
@@ -502,7 +499,7 @@ class OptionsFlowHandler(OptionsFlow):
             {
                 vol.Required(
                     CONF_SELECT_CONFIG,
-                    default=CONF_OPTION_NONE,  # type: ignore
+                    default=CONF_OPTION_NONE,
                 ): vol.In(CONF_SELECT_CONFIG_OPTIONS)
             }
         )

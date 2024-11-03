@@ -1,5 +1,4 @@
 """An Http API Client to interact with motion server"""
-from __future__ import annotations
 
 import asyncio
 from datetime import datetime
@@ -7,8 +6,7 @@ from enum import Enum
 import logging
 import re
 import socket
-from types import MappingProxyType
-from typing import Any, Callable
+import typing
 
 import aiohttp
 from yarl import URL
@@ -19,7 +17,7 @@ from . import config_schema as cs
 class MotionHttpClientError(Exception):
     def __init__(
         self,
-        client: MotionHttpClient,
+        client: "MotionHttpClient",
         message: str | None,
         path: str | None,
         status: int | None,
@@ -47,7 +45,7 @@ class TlsMode(Enum):
 """
 
 
-def _default_camera_factory(client: MotionHttpClient, id: str):
+def _default_camera_factory(client: "MotionHttpClient", id: str):
     return MotionCamera(client, id)
 
 
@@ -63,11 +61,9 @@ class MotionHttpClient:
         username=None,
         password=None,
         tlsmode: TlsMode = TlsMode.AUTO,
-        session: aiohttp.client.ClientSession | None = None,
+        session: aiohttp.ClientSession | None = None,
         logger: logging.Logger | None = None,
-        camera_factory: Callable[
-            [MotionHttpClient, str], MotionCamera
-        ] = _default_camera_factory,
+        camera_factory: "typing.Callable[[MotionHttpClient, str], MotionCamera]" = _default_camera_factory,
     ):
         self._host = host
         self._port = port
@@ -99,7 +95,7 @@ class MotionHttpClient:
         self._feature_tls = False
         self._feature_globalactions = False  # if True (from ver 4.2 on) we can globally start/pause detection by issuing on threadid = 0
         self._configs: dict[str, dict[str, cs.AnyParam]] = {}
-        self._cameras: dict[str, MotionCamera] = {}
+        self._cameras: dict[str, "MotionCamera"] = {}
         self._config_is_dirty = (
             False  # set when we modify a motion config param (async_config_set)
         )
@@ -188,7 +184,7 @@ class MotionHttpClient:
     def cameras(self):
         return self._cameras
 
-    def getcamera(self, camera_id: str) -> MotionCamera:
+    def getcamera(self, camera_id: str) -> "MotionCamera":
         for camera in self._cameras.values():
             if camera.camera_id == camera_id:
                 return camera
@@ -304,7 +300,7 @@ class MotionHttpClient:
     async def async_config_set(
         self,
         key: str,
-        value: Any,
+        value: typing.Any,
         force: bool = False,
         persist: bool = False,
         id: str = cs.GLOBAL_ID,
@@ -511,9 +507,9 @@ class MotionHttpClient:
 
 
 class MotionCamera:
-    def __init__(self, client: MotionHttpClient, id: str):
-        self._client: MotionHttpClient = client
-        self._id: str = id
+    def __init__(self, client: "MotionHttpClient", id: str):
+        self._client = client
+        self._id = id
         self._connected = False  # netcam connected in 'motion' terms
         self._paused = False  # detection paused in 'motion' terms
 
@@ -615,7 +611,7 @@ class MotionCamera:
         return str(stream_authentication).split(":")
 
     async def async_config_set(
-        self, key: str, value: Any, force: bool = False, persist: bool = False
+        self, key: str, value: typing.Any, force: bool = False, persist: bool = False
     ):
         await self._client.async_config_set(
             key=key, value=value, force=force, persist=persist, id=self._id
