@@ -1,18 +1,31 @@
 """Support for Motion daemon DVR Alarm Control Panels."""
 
-from __future__ import annotations
-
 import typing
 
-from homeassistant.components.alarm_control_panel import (
-    AlarmControlPanelEntity,
-    AlarmControlPanelEntityFeature,
-    AlarmControlPanelState,
-    CodeFormat,
-)
-from homeassistant.const import CONF_PIN
+import homeassistant.components.alarm_control_panel as alarm_control_panel
 
-from .camera import MotionFrontendCamera
+try:
+    AlarmControlPanelState = alarm_control_panel.AlarmControlPanelState  # type: ignore
+except:
+    from enum import StrEnum
+
+    class AlarmControlPanelState(StrEnum):
+        """Alarm control panel entity states."""
+
+        DISARMED = "disarmed"
+        ARMED_HOME = "armed_home"
+        ARMED_AWAY = "armed_away"
+        ARMED_NIGHT = "armed_night"
+        ARMED_VACATION = "armed_vacation"
+        ARMED_CUSTOM_BYPASS = "armed_custom_bypass"
+        PENDING = "pending"
+        ARMING = "arming"
+        DISARMING = "disarming"
+        TRIGGERED = "triggered"
+
+
+import homeassistant.const as hac
+
 from .const import (
     CONF_ALARM_DISARMAWAY_CAMERAS,
     CONF_ALARM_DISARMBYPASS_CAMERAS,
@@ -26,30 +39,37 @@ from .const import (
 )
 
 if typing.TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
     from homeassistant.helpers.device_registry import DeviceInfo
 
     from . import MotionFrontendApi
+    from .camera import MotionFrontendCamera
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+async def async_setup_entry(
+    hass: "HomeAssistant", config_entry: "ConfigEntry", async_add_entities
+):
     async_add_entities(
         [MotionFrontendAlarmControlPanel(hass.data[DOMAIN][config_entry.entry_id])]
     )
 
 
-class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
+class MotionFrontendAlarmControlPanel(
+    alarm_control_panel.AlarmControlPanelEntity
+):
 
     _attr_should_poll = True
     _attr_supported_features = (
-        AlarmControlPanelEntityFeature.ARM_HOME
-        | AlarmControlPanelEntityFeature.ARM_AWAY
-        | AlarmControlPanelEntityFeature.ARM_CUSTOM_BYPASS
-        | AlarmControlPanelEntityFeature.ARM_NIGHT
+        alarm_control_panel.AlarmControlPanelEntityFeature.ARM_HOME
+        | alarm_control_panel.AlarmControlPanelEntityFeature.ARM_AWAY
+        | alarm_control_panel.AlarmControlPanelEntityFeature.ARM_CUSTOM_BYPASS
+        | alarm_control_panel.AlarmControlPanelEntityFeature.ARM_NIGHT
     )
 
-    alarm_state: AlarmControlPanelState
+    state: AlarmControlPanelState
     code_arm_required: bool
-    code_format: CodeFormat | None
+    code_format: alarm_control_panel.CodeFormat | None
     device_info: "DeviceInfo"
     extra_state_attributes: dict
     name: str
@@ -67,7 +87,7 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
     }
 
     __slots__ = (
-        "alarm_state",
+        "state",
         "code_arm_required",
         "code_format",
         "device_info",
@@ -82,21 +102,23 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
         "_current_disarm_set",
     )
 
-    def __init__(self, api: MotionFrontendApi):
+    def __init__(self, api: "MotionFrontendApi"):
         self._api = api
-        self._armmode = AlarmControlPanelState.DISARMED
         data = api.config_data.get(CONF_OPTION_ALARM, {})
-        self._pin: str = str(data.get(CONF_PIN))
+        self._pin: str | None = data.get(hac.CONF_PIN)
         self._pause_disarmed: bool = data.get(CONF_ALARM_PAUSE_DISARMED, False)
         self._disarm_sets = {}
         self._current_disarm_set = frozenset()
         for _state, _config_key in self.DISARM_SET_MAP.items():
             self._disarm_sets[_state] = frozenset(data.get(_config_key, []))
 
-        self.alarm_state = AlarmControlPanelState.DISARMED
         self.code_arm_required = bool(self._pin)
         self.code_format = (
-            (CodeFormat.NUMBER if self._pin.isnumeric() else CodeFormat.TEXT)
+            (
+                alarm_control_panel.CodeFormat.NUMBER
+                if self._pin.isnumeric()
+                else alarm_control_panel.CodeFormat.TEXT
+            )
             if self._pin
             else None
         )
@@ -105,24 +127,25 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
         self.name = f"{api.name} Alarm Panel"
         self.unique_id = f"{api.unique_id}_CP"
 
-        """
-        The following code is a bit faulty since it depends on cameras being correctly initialized
-        and updated at the moment of this execution
-        """
-        # try to determine startup state by inspecting cameras setup
+        # try to determine startup state by inspecting cameras setup. This code is pretty slacking
+        disarmed = {
+            camera.id for camera in self._api.cameras.values() if camera.paused
+        }
+        # set this as 'baseline'
+        self.state = self._armmode = AlarmControlPanelState.DISARMED if disarmed else AlarmControlPanelState.ARMED_AWAY
+        # then try to infer from the different configured sets
         if (
             self._pause_disarmed
         ):  # the set of disarmed cameras should match with some of our state-sets
-            disarmed = {
-                camera.id for camera in self._api.cameras.values() if camera.paused
-            }
             # bear in mind only the first matching state/set gets assigned
             # if 2 or more disarm...cameras are the same there's no way to tell the difference
             for _state, _disarm_set in self._disarm_sets.items():
                 if disarmed == _disarm_set:
                     self._current_disarm_set = _disarm_set
-                    self.alarm_state = self._armmode = _state
+                    self.state = self._armmode = _state
                     break
+
+
 
     async def async_update(self):
         """
@@ -143,10 +166,12 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
             self._set_state(AlarmControlPanelState.PENDING)
 
     async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
         self._api.alarm_control_panel = self
 
     async def async_will_remove_from_hass(self) -> None:
         self._api.alarm_control_panel = None
+        await super().async_will_remove_from_hass()
 
     async def async_alarm_disarm(self, code=None):
         if code == self._pin:
@@ -181,7 +206,7 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
                 camera.paused = camera.id in self._current_disarm_set
         self._set_armmode(state)
 
-    def notify_state_changed(self, camera: MotionFrontendCamera):
+    def notify_state_changed(self, camera: "MotionFrontendCamera"):
         if self._armmode is AlarmControlPanelState.DISARMED:
             return
 
@@ -195,7 +220,7 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
 
         if not camera.connected:
             self.extra_state_attributes[EXTRA_ATTR_LAST_PROBLEM] = camera.entity_id
-            if self.alarm_state is not AlarmControlPanelState.TRIGGERED:
+            if self.state is not AlarmControlPanelState.TRIGGERED:
                 # We'll use PENDING to indicate a camera connection problem
                 self._set_state(AlarmControlPanelState.PENDING)
                 return
@@ -221,7 +246,7 @@ class MotionFrontendAlarmControlPanel(AlarmControlPanelEntity):
             self._set_state(state)
 
     def _set_state(self, state: AlarmControlPanelState) -> None:
-        if self.alarm_state != state:
-            self.alarm_state = state
+        if self.state != state:
+            self.state = state
             if self.hass and self.enabled:
                 self.async_write_ha_state()

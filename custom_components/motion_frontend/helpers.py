@@ -1,15 +1,14 @@
-from __future__ import annotations
-
 import logging
 from time import time
 
-LOGGER = logging.getLogger(__name__[:-8]) #get base custom_component name for logging
+LOGGER = logging.getLogger(__name__[:-8])  # get base custom_component name for logging
 
 
 _trap_msg = None
 _trap_args = None
 _trap_time = 0
 _trap_level = 0
+
 
 def LOGGER_trap(level, msg, *args):
     """
@@ -22,10 +21,12 @@ def LOGGER_trap(level, msg, *args):
     global _trap_level
 
     tm = time()
-    if (_trap_level == level) \
-        and (_trap_msg == msg) \
-        and (_trap_args == args) \
-        and ((tm - _trap_time) < 300): # 5 minutes timeout
+    if (
+        (_trap_level == level)
+        and (_trap_msg == msg)
+        and (_trap_args == args)
+        and ((tm - _trap_time) < 300)
+    ):  # 5 minutes timeout
         return
 
     LOGGER.log(level, msg, *args)
@@ -33,8 +34,3 @@ def LOGGER_trap(level, msg, *args):
     _trap_args = args
     _trap_time = tm
     _trap_level = level
-
-
-
-
-

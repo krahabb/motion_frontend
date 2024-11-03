@@ -1,14 +1,10 @@
-from __future__ import annotations
-
 import asyncio
 from contextlib import closing
 from functools import partial
 import typing
 
 import aiohttp
-from homeassistant import const as hac
 from homeassistant.components import camera
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_platform
 
 # from homeassistant.helpers import config_validation as cv
@@ -40,6 +36,8 @@ from .helpers import LOGGER
 from .motionclient import MotionCamera, TlsMode, config_schema as cs
 
 if typing.TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
     from homeassistant.helpers.device_registry import DeviceInfo
 
     from . import MotionFrontendApi
@@ -61,8 +59,10 @@ CAMERA_SERVICES: tuple[tuple[str, dict, str], ...] = (
 )
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    api = hass.data[DOMAIN][config_entry.entry_id]
+async def async_setup_entry(
+    hass: "HomeAssistant", config_entry: "ConfigEntry", async_add_entities
+):
+    api: "MotionFrontendApi" = hass.data[DOMAIN][config_entry.entry_id]
 
     async_add_entities(api.cameras.values())
 
@@ -71,7 +71,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             platform.async_register_entity_service(service, schema, method)
 
 
-async def async_unload_entry(hass: HomeAssistant, config_entry):
+async def async_unload_entry(hass: "HomeAssistant", config_entry: "ConfigEntry"):
     if len(hass.data[DOMAIN]) == 1:  # last config_entry for DOMAIN
         for service_entry in CAMERA_SERVICES:
             hass.services.async_remove(DOMAIN, service_entry[0])
@@ -90,7 +90,7 @@ def _extract_image_from_mjpeg(stream):
 
 
 class MotionFrontendCamera(camera.Camera, MotionCamera):
-    client: MotionFrontendApi
+    client: "MotionFrontendApi"
 
     # HA core entity attributes:
     _attr_assumed_state = False
@@ -117,7 +117,7 @@ class MotionFrontendCamera(camera.Camera, MotionCamera):
         "_camera_image",
     )
 
-    def __init__(self, client: MotionFrontendApi, id: str):
+    def __init__(self, client: "MotionFrontendApi", id: str):
         MotionCamera.__init__(self, client, id)
         self._camera_image = None
         self.available = self.connected
