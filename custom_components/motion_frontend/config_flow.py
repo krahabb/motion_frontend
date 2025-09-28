@@ -1,10 +1,13 @@
 """Config flow to configure Agent devices."""
 
+from typing import TYPE_CHECKING
+import voluptuous as vol
+
 import homeassistant.config_entries as config_entries
 import homeassistant.const as hac
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
+
 
 from .const import (
     CONF_ALARM_DISARMAWAY_CAMERAS,
@@ -37,7 +40,7 @@ from .motionclient import (
 
 # OptionsFlow: async_step_init
 CONF_SELECT_FLOW = "select_flow"
-CONF_SELECT_FLOW_OPTIONS = {
+CONF_SELECT_FLOW_OPTIONS: dict[str, str | cs.AnyParam] = {
     CONF_OPTION_NONE: CONF_OPTION_NONE,
     CONF_OPTION_CONNECTION: "Connection",
     CONF_OPTION_ALARM: "Alarm Panel",
@@ -222,9 +225,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry):
         self._config_entry = config_entry
         self._data = dict(config_entry.data)
-
         self._api: MotionHttpClient | None = None  # init later since we don't have hass
-        self._config_set = {}  # the actual config(s) of motion cameras
+        self._config_set: dict[str, str | cs.AnyParam] = (
+            {}
+        )  # the actual config(s) of motion cameras
 
         self._config_id = ""  # camera_id under configuration (async_step_config)
         self._config_section = ""
@@ -263,7 +267,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     for _id, config in self._api.configs.items()
                 }
 
-        options = dict(CONF_SELECT_FLOW_OPTIONS)
+        options = CONF_SELECT_FLOW_OPTIONS.copy()
         options.update(self._config_set)
 
         return self.async_show_form(
@@ -508,7 +512,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             step_id="config",
             data_schema=vol.Schema(schema),
             description_placeholders={
-                "camera_id": self._config_set.get(self._config_id),
+                "camera_id": self._config_set.get(self._config_id),  # type: ignore
                 "config_section": f"<a href='{_get_config_section_url(self._api.version, self._config_section)}'>"
                 f"{CONF_SELECT_CONFIG_OPTIONS[self._config_section]}</a>",
             },

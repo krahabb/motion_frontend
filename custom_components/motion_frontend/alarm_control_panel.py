@@ -1,6 +1,6 @@
 """Support for Motion daemon DVR Alarm Control Panels."""
 
-import typing
+from typing import TYPE_CHECKING
 
 import homeassistant.components.alarm_control_panel as alarm_control_panel
 
@@ -38,7 +38,7 @@ from .const import (
     EXTRA_ATTR_LAST_TRIGGERED,
 )
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.device_registry import DeviceInfo
@@ -55,9 +55,7 @@ async def async_setup_entry(
     )
 
 
-class MotionFrontendAlarmControlPanel(
-    alarm_control_panel.AlarmControlPanelEntity
-):
+class MotionFrontendAlarmControlPanel(alarm_control_panel.AlarmControlPanelEntity):
 
     _attr_should_poll = True
     _attr_supported_features = (
@@ -67,17 +65,18 @@ class MotionFrontendAlarmControlPanel(
         | alarm_control_panel.AlarmControlPanelEntityFeature.ARM_NIGHT
     )
 
-    state: AlarmControlPanelState
-    code_arm_required: bool
-    code_format: alarm_control_panel.CodeFormat | None
-    device_info: "DeviceInfo"
-    extra_state_attributes: dict
-    name: str
-    unique_id: str
+    if TYPE_CHECKING:
+        alarm_state: AlarmControlPanelState
+        code_arm_required: bool
+        code_format: alarm_control_panel.CodeFormat | None
+        device_info: DeviceInfo
+        extra_state_attributes: dict
+        name: str
+        unique_id: str
 
-    _armmode: AlarmControlPanelState
-    _disarm_sets: dict[AlarmControlPanelState, frozenset]
-    _current_disarm_set: frozenset
+        _armmode: AlarmControlPanelState
+        _disarm_sets: dict[AlarmControlPanelState, frozenset]
+        _current_disarm_set: frozenset
 
     DISARM_SET_MAP = {
         AlarmControlPanelState.ARMED_HOME: CONF_ALARM_DISARMHOME_CAMERAS,
@@ -87,7 +86,7 @@ class MotionFrontendAlarmControlPanel(
     }
 
     __slots__ = (
-        "state",
+        "alarm_state",
         "code_arm_required",
         "code_format",
         "device_info",
@@ -128,11 +127,13 @@ class MotionFrontendAlarmControlPanel(
         self.unique_id = f"{api.unique_id}_CP"
 
         # try to determine startup state by inspecting cameras setup. This code is pretty slacking
-        disarmed = {
-            camera.id for camera in self._api.cameras.values() if camera.paused
-        }
+        disarmed = {camera.id for camera in self._api.cameras.values() if camera.paused}
         # set this as 'baseline'
-        self.state = self._armmode = AlarmControlPanelState.DISARMED if disarmed else AlarmControlPanelState.ARMED_AWAY
+        self.alarm_state = self._armmode = (
+            AlarmControlPanelState.DISARMED
+            if disarmed
+            else AlarmControlPanelState.ARMED_AWAY
+        )
         # then try to infer from the different configured sets
         if (
             self._pause_disarmed
@@ -142,10 +143,8 @@ class MotionFrontendAlarmControlPanel(
             for _state, _disarm_set in self._disarm_sets.items():
                 if disarmed == _disarm_set:
                     self._current_disarm_set = _disarm_set
-                    self.state = self._armmode = _state
+                    self.alarm_state = self._armmode = _state
                     break
-
-
 
     async def async_update(self):
         """
@@ -220,7 +219,7 @@ class MotionFrontendAlarmControlPanel(
 
         if not camera.connected:
             self.extra_state_attributes[EXTRA_ATTR_LAST_PROBLEM] = camera.entity_id
-            if self.state is not AlarmControlPanelState.TRIGGERED:
+            if self.alarm_state is not AlarmControlPanelState.TRIGGERED:
                 # We'll use PENDING to indicate a camera connection problem
                 self._set_state(AlarmControlPanelState.PENDING)
                 return
@@ -246,7 +245,7 @@ class MotionFrontendAlarmControlPanel(
             self._set_state(state)
 
     def _set_state(self, state: AlarmControlPanelState) -> None:
-        if self.state != state:
-            self.state = state
+        if self.alarm_state != state:
+            self.alarm_state = state
             if self.hass and self.enabled:
                 self.async_write_ha_state()
